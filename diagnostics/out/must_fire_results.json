@@ -1,0 +1,8 @@
+{
+  "test_name": "must_fire_aligned",
+  "status": "FAIL",
+  "first_pred_cycle": -1,
+  "pred_valid_count": 0,
+  "total_cycles": 16498,
+  "notes": "PHASE4_RESULT test=must_fire status=FAIL first_cycle=-1 pred_count=0 total_cycle=16498"
+}

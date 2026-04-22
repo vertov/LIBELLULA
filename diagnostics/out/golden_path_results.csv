@@ -1,0 +1,5 @@
+test_name,simulator,seed,target_speed,event_rate_cycles,event_count,reset_cycles,warmup_cycles,total_cycles,pred_valid_count,first_pred_cycle,pass_fail,notes
+GP1,vvp,deterministic,1,1,64,64,32,416,0,-1,FAIL,pred_valid never asserted
+GP2,vvp,deterministic,1,2,64,64,32,480,0,-1,FAIL,pred_valid never asserted
+GP3,vvp,deterministic,1,1,128,64,64,576,0,-1,FAIL,pred_valid never asserted
+GP4,vvp,deterministic,1,1,64,64,32,416,0,-1,FAIL,pred_valid never asserted

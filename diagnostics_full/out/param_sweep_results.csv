@@ -1,0 +1,4 @@
+config_id,parameter_overrides,lif_spike_count,downstream_activity,pred_valid_count,first_pred_cycle,classification,notes
+default,LEAK_SHIFT=2 THRESH=16,0,0,0,-1,dead across legal parameter space,LIF_RESULT bench=param_default mode=0 target=5 hit_count=64 hit_spacing=1 peak=4 spiked=0 first_spike=-1 final_state=3 leak_shift=2 thresh=16
+no_leak,LEAK_SHIFT=0 THRESH=16,0,0,0,-1,dead even under extreme tuning,LIF_RESULT bench=param_no_leak mode=0 target=5 hit_count=64 hit_spacing=1 peak=1 spiked=0 first_spike=-1 final_state=0 leak_shift=0 thresh=16
+low_thresh,LEAK_SHIFT=2 THRESH=2,1,0,0,-1,emits under extreme tuning,LIF_RESULT bench=param_low_thresh mode=0 target=5 hit_count=64 hit_spacing=1 peak=1 spiked=1 first_spike=38 final_state=0 leak_shift=2 thresh=2

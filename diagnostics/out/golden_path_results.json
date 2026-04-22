@@ -1,0 +1,62 @@
+[
+  {
+    "test_name": "GP1",
+    "simulator": "vvp",
+    "seed": "deterministic",
+    "target_speed": 1,
+    "event_rate_cycles": 1,
+    "event_count": 64,
+    "reset_cycles": 64,
+    "warmup_cycles": 32,
+    "total_cycles": 416,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "pred_valid never asserted"
+  },
+  {
+    "test_name": "GP2",
+    "simulator": "vvp",
+    "seed": "deterministic",
+    "target_speed": 1,
+    "event_rate_cycles": 2,
+    "event_count": 64,
+    "reset_cycles": 64,
+    "warmup_cycles": 32,
+    "total_cycles": 480,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "pred_valid never asserted"
+  },
+  {
+    "test_name": "GP3",
+    "simulator": "vvp",
+    "seed": "deterministic",
+    "target_speed": 1,
+    "event_rate_cycles": 1,
+    "event_count": 128,
+    "reset_cycles": 64,
+    "warmup_cycles": 64,
+    "total_cycles": 576,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "pred_valid never asserted"
+  },
+  {
+    "test_name": "GP4",
+    "simulator": "vvp",
+    "seed": "deterministic",
+    "target_speed": 1,
+    "event_rate_cycles": 1,
+    "event_count": 64,
+    "reset_cycles": 64,
+    "warmup_cycles": 32,
+    "total_cycles": 416,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "pred_valid never asserted"
+  }
+]

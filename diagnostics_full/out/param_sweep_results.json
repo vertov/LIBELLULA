@@ -1,0 +1,32 @@
+[
+  {
+    "config_id": "default",
+    "parameter_overrides": "LEAK_SHIFT=2 THRESH=16",
+    "lif_spike_count": 0,
+    "downstream_activity": 0,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "classification": "dead across legal parameter space",
+    "notes": "LIF_RESULT bench=param_default mode=0 target=5 hit_count=64 hit_spacing=1 peak=4 spiked=0 first_spike=-1 final_state=3 leak_shift=2 thresh=16"
+  },
+  {
+    "config_id": "no_leak",
+    "parameter_overrides": "LEAK_SHIFT=0 THRESH=16",
+    "lif_spike_count": 0,
+    "downstream_activity": 0,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "classification": "dead even under extreme tuning",
+    "notes": "LIF_RESULT bench=param_no_leak mode=0 target=5 hit_count=64 hit_spacing=1 peak=1 spiked=0 first_spike=-1 final_state=0 leak_shift=0 thresh=16"
+  },
+  {
+    "config_id": "low_thresh",
+    "parameter_overrides": "LEAK_SHIFT=2 THRESH=2",
+    "lif_spike_count": 1,
+    "downstream_activity": 0,
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "classification": "emits under extreme tuning",
+    "notes": "LIF_RESULT bench=param_low_thresh mode=0 target=5 hit_count=64 hit_spacing=1 peak=1 spiked=1 first_spike=38 final_state=0 leak_shift=2 thresh=2"
+  }
+]

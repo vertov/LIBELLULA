@@ -1,0 +1,46 @@
+{
+  "verdict": "No — functionally invalid as a predictive core",
+  "verification_date": "2026-04-11",
+  "simulator": "iverilog 12.0 / vvp",
+  "ranked_causes": [
+    {
+      "rank": 1,
+      "cause": "LIF parameter misconfiguration: LEAK_SHIFT=2 with THRESH=16 produces a fixed point at accumulator=4, which is permanently below threshold. No event stimulus can cause a spike regardless of timing or density.",
+      "mechanism": "st_next = st - (st>>2) + hit. Fixed point: st* = 4 (since 4>>2=1, net change = 0 with continuous hits). 4 < 16 = THRESH. Proven by direct simulation with scan held and 64 continuous identical-coordinate hits.",
+      "simulation_evidence": "lif_unit_results.csv: peak=4 spiked=0 with LEAK_SHIFT=2 THRESH=16 scan_mode=hold",
+      "math_fix_needed": "LEAK_SHIFT >= 4 required for THRESH=16. With LEAK_SHIFT=4: state accumulates 0->1->...->16 over ~32 hits, then spikes.",
+      "decision_rule": "Case A — LIF unit cannot spike under any legal stimulation with current parameters"
+    },
+    {
+      "rank": 2,
+      "cause": "Scan/hash ingestion contract: events are accepted only in the single clock cycle when scan_addr == (x XOR y). With AW=8 free-running scan, this is a 1-in-256 cycle opportunity. No buffering, retry, or holdoff mechanism exists.",
+      "mechanism": "hit_comb = in_valid && (hashed_xy == scan_addr). With free-running scan cycling 0-255, each address is open for 1 cycle per 256. Event is silently dropped if not perfectly timed.",
+      "simulation_evidence": "scan_hash_results.csv: all 4 stimulus modes produce lif_nonzero=0. Even wait-for-match and hold-until-match modes fail because each event targets a different LIF neuron.",
+      "severity": "Secondary blocker — would also prevent spiking even if LEAK_SHIFT were fixed, unless the same (x,y) is repeated 16+ times consecutively",
+      "decision_rule": "Case B — hidden/undocumented ingestion contract, compounding primary failure"
+    },
+    {
+      "rank": 3,
+      "cause": "Must-fire testbench sends events with incrementing x coordinates (x_step=1), so every event maps to a DIFFERENT LIF neuron. No single neuron ever accumulates more than 1 hit. The 'must-fire' guarantee is vacuous.",
+      "mechanism": "emit_aligned(cur_x, cur_y, 1) with cur_x incrementing means hash_xy(cur_x, cur_y) is different each call. Maximum single-neuron accumulation = 1.",
+      "simulation_evidence": "repro_runs.csv must_fire_aligned: pred_valid_count=0 even with hash-aligned events",
+      "severity": "Tertiary — bench design error; masks the real problem in testing"
+    },
+    {
+      "rank": 4,
+      "cause": "All downstream stages (delay_lattice, reichardt, burst_gate, ab_predictor) are syntactically and functionally correct RTL, but permanently idle because lif_v never fires.",
+      "mechanism": "Cascade: lif_v=0 -> delay_lattice never writes ring buffer -> v_e..v_sw=0 -> reichardt ds_v=0 -> burst_gate bg_v=0 -> ab_predictor pred_valid=0",
+      "simulation_evidence": "stage_activity.csv: all stage counters = 0 in every run",
+      "severity": "Consequential, not primary"
+    }
+  ],
+  "parameter_sensitivity_summary": {
+    "LEAK_SHIFT=0_THRESH=16": "peak=1 no_spike — leak=state on every cycle; accumulator cannot grow",
+    "LEAK_SHIFT=1_THRESH=16": "peak=2 no_spike — steady-state=2",
+    "LEAK_SHIFT=2_THRESH=16": "peak=4 no_spike — DEFAULT — steady-state=4",
+    "LEAK_SHIFT=3_THRESH=16": "peak=8 no_spike — steady-state=8",
+    "LEAK_SHIFT=4_THRESH=16": "peak=15 SPIKES at cycle 65 — first working config",
+    "LEAK_SHIFT=2_THRESH=4": "SPIKES — extreme threshold reduction",
+    "LEAK_SHIFT=2_THRESH=8": "peak=4 no_spike — steady-state below threshold"
+  }
+}

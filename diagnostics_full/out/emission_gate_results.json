@@ -1,0 +1,42 @@
+[
+  {
+    "gate_term": "lif_v",
+    "source_location": "rtl/lif_tile_tmux.v:54 (hit_comb)",
+    "observed_true_count": 0,
+    "observed_false_count": 64,
+    "blocker_rank": 1,
+    "notes": "Input must hash-match scan"
+  },
+  {
+    "gate_term": "delay",
+    "source_location": "rtl/delay_lattice_rb.v:??",
+    "observed_true_count": 0,
+    "observed_false_count": 0,
+    "blocker_rank": 2,
+    "notes": "Delay lattice taps nonzero"
+  },
+  {
+    "gate_term": "reichardt",
+    "source_location": "rtl/reichardt_ds.v",
+    "observed_true_count": 0,
+    "observed_false_count": 0,
+    "blocker_rank": 3,
+    "notes": "Direction detector emits ds_v"
+  },
+  {
+    "gate_term": "burst",
+    "source_location": "rtl/burst_gate.v",
+    "observed_true_count": 0,
+    "observed_false_count": 0,
+    "blocker_rank": 4,
+    "notes": "Burst gate opens"
+  },
+  {
+    "gate_term": "pred",
+    "source_location": "rtl/ab_predictor.v",
+    "observed_true_count": 0,
+    "observed_false_count": 0,
+    "blocker_rank": 5,
+    "notes": "Predictor out_valid"
+  }
+]

@@ -1,0 +1,5 @@
+bench_name,stimulus_mode,event_count,accepted_count,acceptance_ratio,lif_nonzero,downstream_nonzero,pred_valid_count,notes
+unscheduled,unscheduled,32,0,0.0,0,0,0,PHASE2_STAGE events=32 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=33 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1
+wait_for_match,wait_for_match,32,0,0.0,0,0,0,PHASE2_STAGE events=32 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=281 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1
+hold_until_match,hold_until_match,7882,0,0.0,0,0,0,PHASE2_STAGE events=7882 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=32 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1
+retry_three_times,retry_three_times,96,0,0.0,0,0,0,PHASE2_STAGE events=96 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=33 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1

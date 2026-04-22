@@ -1,0 +1,4 @@
+scenario,pred_valid_count,first_pred_cycle,output_x,output_y,predictive_continuity,status,notes
+easy_linear_motion,0,-1,N/A,N/A,N/A,SKIPPED,"Phase 8 skipped: no pred_valid produced in any phase. LIF non-spiking prevents all downstream activation."
+hash_aligned_motion,0,-1,N/A,N/A,N/A,SKIPPED,"Phase 8 skipped: hash-aligned stimulus (must-fire bench) still produces pred_valid=0."
+clutter_crossing,0,-1,N/A,N/A,N/A,SKIPPED,"Phase 8 skipped: same root cause. Clutter test would also fail."

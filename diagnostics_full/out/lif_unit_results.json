@@ -1,0 +1,32 @@
+[
+  {
+    "bench_name": "lif_hold",
+    "target_cell": 5,
+    "legal_stimulus_description": "hash-aligned hits",
+    "hit_count": 32,
+    "hit_spacing": 0,
+    "reset_cycles": 64,
+    "threshold_param": 16,
+    "leak_param": 2,
+    "scan_condition": "hold",
+    "accumulator_peak": 4,
+    "spiked": 0,
+    "first_spike_cycle": -1,
+    "notes": "LIF_RESULT bench=lif_hold mode=0 target=5 hit_count=32 hit_spacing=0 peak=4 spiked=0 first_spike=-1 final_state=3 leak_shift=2 thresh=16"
+  },
+  {
+    "bench_name": "lif_free_run",
+    "target_cell": 5,
+    "legal_stimulus_description": "hash-aligned hits",
+    "hit_count": 64,
+    "hit_spacing": 0,
+    "reset_cycles": 64,
+    "threshold_param": 16,
+    "leak_param": 2,
+    "scan_condition": "free-run",
+    "accumulator_peak": 0,
+    "spiked": 0,
+    "first_spike_cycle": -1,
+    "notes": "LIF_RESULT bench=lif_free_run mode=1 target=5 hit_count=64 hit_spacing=0 peak=0 spiked=0 first_spike=-1 final_state=0 leak_shift=2 thresh=16"
+  }
+]

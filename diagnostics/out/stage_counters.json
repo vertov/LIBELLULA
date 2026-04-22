@@ -1,0 +1,14 @@
+{
+  "test_name": "GP1_STAGE",
+  "events_seen": 64,
+  "events_accepted": 0,
+  "stage1_activity": 0,
+  "stage2_activity": 0,
+  "stage3_activity": 0,
+  "stage4_activity": 0,
+  "stage5_activity": 0,
+  "pred_valid_count": 0,
+  "first_dead_stage": "LIF spikes",
+  "suspected_blocker": "lif",
+  "notes": "PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0"
+}

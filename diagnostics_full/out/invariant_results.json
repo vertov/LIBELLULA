@@ -1,0 +1,16 @@
+[
+  {
+    "invariant_name": "lif_accumulator_can_reach_threshold",
+    "pass_fail": "FAIL",
+    "failing_signal_or_path": "lif_tile_tmux.state_mem",
+    "evidence": "peak=4 threshold=16 (lif_hold)",
+    "suspected_effect": "Neuron never spikes even under continuous hits"
+  },
+  {
+    "invariant_name": "lif_state_stable_between_scans",
+    "pass_fail": "PASS",
+    "failing_signal_or_path": "lif_tile_tmux.state_mem (free_run)",
+    "evidence": "final_state=0 after free-run cycle",
+    "suspected_effect": "State decays to zero before next visit"
+  }
+]

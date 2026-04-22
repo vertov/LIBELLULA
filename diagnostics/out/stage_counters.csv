@@ -1,0 +1,2 @@
+test_name,events_seen,events_accepted,stage1_activity,stage2_activity,stage3_activity,stage4_activity,stage5_activity,pred_valid_count,first_dead_stage,suspected_blocker,notes
+GP1_STAGE,64,0,0,0,0,0,0,0,LIF spikes,lif,PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0

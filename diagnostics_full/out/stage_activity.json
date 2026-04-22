@@ -1,0 +1,30 @@
+[
+  {
+    "run_id": "golden_unscheduled",
+    "events_presented": 64,
+    "events_accepted": 0,
+    "lif_accumulator_nonzero_count": 0,
+    "lif_spike_count": 0,
+    "delay_activity_count": 0,
+    "reichardt_activity_count": 0,
+    "burst_open_count": 0,
+    "predictor_candidate_count": 0,
+    "pred_valid_count": 0,
+    "earliest_dead_stage": "LIF spikes",
+    "notes": "PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=33 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1"
+  },
+  {
+    "run_id": "must_fire_aligned",
+    "events_presented": 64,
+    "events_accepted": 0,
+    "lif_accumulator_nonzero_count": 0,
+    "lif_spike_count": 0,
+    "delay_activity_count": 0,
+    "reichardt_activity_count": 0,
+    "burst_open_count": 0,
+    "predictor_candidate_count": 0,
+    "pred_valid_count": 0,
+    "earliest_dead_stage": "LIF spikes",
+    "notes": "PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=305 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1"
+  }
+]

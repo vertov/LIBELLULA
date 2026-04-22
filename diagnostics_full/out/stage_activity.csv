@@ -1,0 +1,3 @@
+run_id,events_presented,events_accepted,lif_accumulator_nonzero_count,lif_spike_count,delay_activity_count,reichardt_activity_count,burst_open_count,predictor_candidate_count,pred_valid_count,earliest_dead_stage,notes
+golden_unscheduled,64,0,0,0,0,0,0,0,0,LIF spikes,PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=33 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1
+must_fire_aligned,64,0,0,0,0,0,0,0,0,LIF spikes,PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=305 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1

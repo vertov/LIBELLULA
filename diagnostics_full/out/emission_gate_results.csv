@@ -1,0 +1,6 @@
+gate_term,source_location,observed_true_count,observed_false_count,blocker_rank,notes
+lif_v,rtl/lif_tile_tmux.v:54 (hit_comb),0,64,1,Input must hash-match scan
+delay,rtl/delay_lattice_rb.v:??,0,0,2,Delay lattice taps nonzero
+reichardt,rtl/reichardt_ds.v,0,0,3,Direction detector emits ds_v
+burst,rtl/burst_gate.v,0,0,4,Burst gate opens
+pred,rtl/ab_predictor.v,0,0,5,Predictor out_valid

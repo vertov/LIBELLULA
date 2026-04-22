@@ -1,0 +1,36 @@
+[
+  {
+    "test_name": "golden_unscheduled",
+    "command": "vvp sim/build/tb_pred_valid_golden +TEST_NAME=full_gp +EVENT_SPACING=1 +EVENT_COUNT=64 +RESET_CYCLES=64 +QUIET_CYCLES=32 +STAGE_OUT=diagnostics_full/out/stage_golden.log",
+    "simulator": "vvp",
+    "reset_cycles": 64,
+    "warmup_cycles": 32,
+    "total_cycles": 416,
+    "event_pattern": "linear monotonic unscheduled",
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "first_nonzero_lif_cycle": -1,
+    "first_nonzero_delay_cycle": -1,
+    "first_nonzero_reichardt_cycle": -1,
+    "first_nonzero_burst_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=33 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1"
+  },
+  {
+    "test_name": "must_fire_aligned",
+    "command": "vvp sim/build/tb_pred_must_fire +X_STEP=1 +STAGE_OUT=diagnostics_full/out/stage_must_fire.log",
+    "simulator": "vvp",
+    "reset_cycles": 128,
+    "warmup_cycles": 64,
+    "total_cycles": 16498,
+    "event_pattern": "hash-aligned sequential hits",
+    "pred_valid_count": 0,
+    "first_pred_cycle": -1,
+    "first_nonzero_lif_cycle": -1,
+    "first_nonzero_delay_cycle": -1,
+    "first_nonzero_reichardt_cycle": -1,
+    "first_nonzero_burst_cycle": -1,
+    "pass_fail": "FAIL",
+    "notes": "PHASE2_STAGE events=64 lif=0 delay=0 reichardt=0 burst=0 pred=0 first_ev=305 first_lif=-1 first_delay=-1 first_reichardt=-1 first_burst=-1 first_pred=-1"
+  }
+]

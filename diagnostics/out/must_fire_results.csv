@@ -1,0 +1,2 @@
+test_name,status,first_pred_cycle,pred_valid_count,total_cycles,notes
+must_fire_aligned,FAIL,-1,0,16498,PHASE4_RESULT test=must_fire status=FAIL first_cycle=-1 pred_count=0 total_cycle=16498
