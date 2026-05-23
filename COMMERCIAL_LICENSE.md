@@ -1,39 +1,15 @@
-# Commercial License — LIBELLULA Neuromorphic Motion-Prediction Processor
+Commercial Licensing & Custom Integration
+LIBELLULA is available for commercial acquisition, exclusive sector lock-out, or non-exclusive production licensing. 
+Because real-world deployments require specific silicon targets, commercial agreements are structured as a comprehensive delivery and integration package.
 
-## Summary
+Commercial Deliverables Include:
 
-LIBELLULA is dual-licensed. The GPL v3 license in this repository permits
-non-commercial, research, and educational use. This document governs
-commercial use.
+Production-Ready RTL: Fully clean, synthesizable Verilog-2001 source files stripped of GPL restrictions.
 
-## What Requires a Commercial License
+Closed-Timing Verification: Custom synthesis scripts and verification testbenches tailored to your target FPGA (e.g., AMD/Xilinx Vivado, Intel Quartus) or ASIC node constraints.
 
-A commercial license is required if you intend to:
+Architectural Hand-off: Direct engineering consultation hours with the architect to integrate the AER handshake layer into your proprietary neural processing stack or custom sensor back-end.
 
-- Integrate LIBELLULA RTL into a product, platform, or system offered for sale
-- Deploy LIBELLULA in a commercial service or SaaS context
-- Use LIBELLULA as part of a defence, security, or government-contracted system
-- License, sublicense, or distribute LIBELLULA as part of a larger IP package
-- Use LIBELLULA in FPGA or ASIC hardware deployed outside a research context
+IP Indemnification: Full commercial warranties and legal freedom-to-operate assurances.
 
-## What Does Not Require a Commercial License
-
-The GPL v3 license is sufficient for:
-
-- Academic research and publication
-- University or institute evaluation
-- Personal and hobbyist experimentation
-- Open-source projects that are themselves GPL v3 licensed
-- Reporting bugs, contributing improvements back to this repository
-
-## How to Inquire
-
-Contact the author directly to discuss commercial terms, evaluation agreements,
-or defence licensing:
-
-**Oliver Hockenhull**  
-Independent Researcher, British Columbia, Canada  
-oliver.hockenhull@gmail.com
-
-Response time for serious commercial inquiries: typically within one week.
-Please include a brief description of your intended use case and platform.
+For commercial terms, evaluation agreements, or to request an architectural review for defense/aerospace applications, please contact the author directly via the secure portal at [Link to your website contact form] or via GitHub inquiry.
