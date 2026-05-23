@@ -12,4 +12,4 @@ Architectural Hand-off: Direct engineering consultation hours with the architect
 
 IP Indemnification: Full commercial warranties and legal freedom-to-operate assurances.
 
-For commercial terms, evaluation agreements, or to request an architectural review for defense/aerospace applications, please contact the author directly via oliver.hockenhull@gmail.com or via GitHub inquiry.
+For commercial terms, evaluation agreements, or to request an architectural review, please contact the author directly via oliver.hockenhull@gmail.com or via GitHub inquiry.
