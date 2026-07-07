@@ -10,6 +10,7 @@ check-tools:
 # === RTL (core pipeline) ===
 RTL = \
   ../rtl/aer_rx.v \
+  ../rtl/activity_filter.v \
   ../rtl/lif_tile_tmux.v \
   ../rtl/delay_lattice_rb.v \
   ../rtl/reichardt_ds.v \
@@ -40,6 +41,8 @@ TB_REICH    = ../tb/tb_reichardt_ds.v
 TB_BURST    = ../tb/tb_burst_gate.v
 TB_ABPRED   = ../tb/tb_ab_predictor.v
 TB_CONF     = ../tb/tb_conf_gate.v
+TB_AF       = ../tb/tb_activity_filter.v
+TB_ABADPT   = ../tb/tb_ab_adaptive.v
 
 # === scenario benches ===
 TB_CV       = ../tb/tb_cv_linear.v
@@ -60,6 +63,7 @@ TB_LINEDGE  = ../tb/tb_linear_edge.v
 # === v22-specific scenario benches ===
 TB_ACCURACY = ../tb/tb_accuracy.v
 TB_E2EMOT   = ../tb/tb_e2e_motion.v
+TB_E2EAF    = ../tb/tb_e2e_filter.v
 TB_NATURAL  = ../tb/tb_naturalistic.v
 TB_REVERSAL = ../tb/tb_reversal.v
 TB_AWSWEEP  = ../tb/tb_aw_sweep.v
@@ -176,6 +180,12 @@ build/tb_ab_predictor: check-tools $(TB_ABPRED) $(RTL) | init
 build/tb_conf_gate: check-tools $(TB_CONF) $(RTL) | init
 	$(call COMPILE,$@,$(TB_CONF),build/tb_conf_gate_iverilog.log)
 
+build/tb_activity_filter: check-tools $(TB_AF) $(RTL) | init
+	$(call COMPILE,$@,$(TB_AF),build/tb_activity_filter_iverilog.log)
+
+build/tb_ab_adaptive: check-tools $(TB_ABADPT) $(RTL) | init
+	$(call COMPILE,$@,$(TB_ABADPT),build/tb_ab_adaptive_iverilog.log)
+
 build/tb_lif_liveness: check-tools $(TB_LIF_LIVE) $(RTL) | init
 	$(call COMPILE,$@,$(TB_LIF_LIVE),build/tb_lif_liveness_iverilog.log)
 
@@ -184,6 +194,7 @@ lif_liveness: build/tb_lif_liveness
 
 units: build/tb_aer_rx build/tb_lif_tile_tmux build/tb_delay_lattice_rb \
        build/tb_reichardt_ds build/tb_burst_gate build/tb_ab_predictor build/tb_conf_gate \
+       build/tb_activity_filter build/tb_ab_adaptive \
        build/tb_lif_liveness
 	$(VVP) build/tb_aer_rx
 	$(VVP) build/tb_lif_tile_tmux
@@ -192,6 +203,8 @@ units: build/tb_aer_rx build/tb_lif_tile_tmux build/tb_delay_lattice_rb \
 	$(VVP) build/tb_burst_gate
 	$(VVP) build/tb_ab_predictor
 	$(VVP) build/tb_conf_gate
+	$(VVP) build/tb_activity_filter
+	$(VVP) build/tb_ab_adaptive
 	$(VVP) build/tb_lif_liveness
 	@echo "UNIT TESTS PASSED"
 
@@ -250,6 +263,12 @@ build/tb_e2e_motion: check-tools $(TB_E2EMOT) $(RTL) | init
 
 e2e_motion: build/tb_e2e_motion
 	$(VVP) build/tb_e2e_motion
+
+build/tb_e2e_filter: check-tools $(TB_E2EAF) $(RTL) | init
+	$(call COMPILE,$@,$(TB_E2EAF),build/tb_e2e_filter_iverilog.log)
+
+e2e_filter: build/tb_e2e_filter
+	$(VVP) build/tb_e2e_filter
 
 build/tb_naturalistic: check-tools $(TB_NATURAL) $(RTL) | init
 	$(call COMPILE,$@,$(TB_NATURAL),build/tb_naturalistic_iverilog.log)
@@ -374,7 +393,7 @@ scenarios: build/tb_cv_linear build/tb_cross_clutter build/tb_accel_limit \
            build/tb_dense_burst build/tb_zero_motion build/tb_sparse_events \
            build/tb_direction_reversal build/tb_multi_target build/tb_meps_nodrop \
            build/tb_prediction_error build/tb_linear_edge \
-           build/tb_accuracy build/tb_e2e_motion build/tb_naturalistic \
+           build/tb_accuracy build/tb_e2e_motion build/tb_e2e_filter build/tb_naturalistic \
            build/tb_reversal build/tb_aw_sweep build/tb_multi_target_pool
 	$(VVP) build/tb_cv_linear
 	$(VVP) build/tb_cross_clutter
@@ -392,6 +411,7 @@ scenarios: build/tb_cv_linear build/tb_cross_clutter build/tb_accel_limit \
 	$(VVP) build/tb_linear_edge
 	$(VVP) build/tb_accuracy
 	$(VVP) build/tb_e2e_motion
+	$(VVP) build/tb_e2e_filter
 	$(VVP) build/tb_naturalistic
 	$(VVP) build/tb_reversal
 	$(VVP) build/tb_aw_sweep

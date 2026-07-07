@@ -76,6 +76,14 @@ module libellula_soc #(
     parameter integer BG_TH_CLOSE   = 0,  // stay open once opened
     parameter integer BG_WINDOW_OVR = 4,  // short density window (4 scan periods)
 
+    // ---- background-activity filter ----
+    // ON for the UAV profile: dense real-target event streams carry their own
+    // spatial support, so the filter costs one event per cold region and
+    // removes isolated sensor noise before it can charge the hair-trigger LIF
+    // (THRESH=4 / HIT_WEIGHT=8192, where one noise event otherwise spikes).
+    parameter integer AF_EN     = 1,
+    parameter integer AF_WINDOW = 2048,
+
     // ---- output prediction FIFO ----
     // Depth must be a power of 2 and >= NTRACK to guarantee no prediction is
     // dropped during a simultaneous multi-tracker burst.
@@ -169,7 +177,9 @@ module libellula_soc #(
         .LIF_HIT_WEIGHT(LIF_HIT_WEIGHT),
         .BG_TH_OPEN   (BG_TH_OPEN),
         .BG_TH_CLOSE  (BG_TH_CLOSE),
-        .BG_WINDOW_OVR(BG_WINDOW_OVR)
+        .BG_WINDOW_OVR(BG_WINDOW_OVR),
+        .AF_EN        (AF_EN),
+        .AF_WINDOW    (AF_WINDOW)
     ) u_core (
         .clk       (clk),
         .rst       (rst),
