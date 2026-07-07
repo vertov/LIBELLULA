@@ -1,0 +1,48 @@
+# LIBELLULA CI: full Icarus Verilog regression on every push and PR.
+#
+# The benches signal failure by PRINTING (FAIL/TIMEOUT) rather than by exit
+# code — vvp exits 0 either way — so each step greps its own log. A step
+# fails if make fails (compile error) OR if any FAIL/TIMEOUT line appears.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends iverilog
+          iverilog -V | head -1
+
+      - name: Unit benches
+        run: |
+          make -C sim -s units 2>&1 | tee units.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' units.log
+
+      - name: Claim benches (latency / 300 Hz / 1 Meps)
+        run: |
+          make -C sim -s latency px300 meps 2>&1 | tee claims.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' claims.log
+
+      - name: Scenario benches
+        run: |
+          make -C sim -s scenarios 2>&1 | tee scenarios.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' scenarios.log
+
+      - name: Hostile benches
+        run: |
+          make -C sim -s hostile 2>&1 | tee hostile.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' hostile.log
+
+      - name: Diagnostic benches (LIBELLULA_DIAG)
+        run: |
+          make -C sim -s diagnostic 2>&1 | tee diagnostic.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' diagnostic.log
