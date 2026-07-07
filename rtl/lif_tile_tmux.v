@@ -1,27 +1,41 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-// Time-multiplexed LIF array (14-bit leak). Explicit 2-stage pipeline.
+// Time-multiplexed LIF array (leaky integrate-and-fire). Explicit 2-stage pipeline.
 // Stage 0: Capture scan address and hit flag, initiate read
 // Stage 1: Compute next state from read value, write back, detect spike
 //
 // Events are hashed into neuron addresses. If an event arrives when its hashed
-// address is not currently selected by scan_addr, the LIF immediately services
+// address is not currently selected by the scan, the LIF immediately services
 // that neuron by retiming the scan for one cycle.
+//
+// -------------------------------------------------------------------------
+// SCAN / LEAK NOTE (fix/pipeline-rework):
+// Membrane leak only occurs when a neuron is READ, and reads are driven by the
+// scan address. Previously the scan was ALWAYS the external `scan_addr` input,
+// so the leak time-constant of the whole front end was an implicit contract on
+// the host (how fast it swept scan_addr) rather than a property of this module.
+// With SCAN_MODE=1 an internal free-running counter drives the background scan,
+// so every neuron is visited every 2^AW cycles and the leak cadence is well
+// defined and self-contained. SCAN_MODE=0 (default) preserves the original
+// externally-driven behaviour so existing unit testbenches are unchanged.
+// The top-level SoC instantiates with SCAN_MODE=1.
+// -------------------------------------------------------------------------
 module lif_tile_tmux #(
     parameter XW=10, YW=10,              // address widths
     parameter AW=10,                     // addressable depth (X or Y flatten)
     parameter SW=14,                     // state width (leaky membrane)
     parameter LEAK_SHIFT=4,              // leak factor: state -= state>>LEAK_SHIFT
     parameter THRESH=16,                 // firing threshold
-    parameter integer HIT_WEIGHT=1       // charge per hit
+    parameter integer HIT_WEIGHT=1,      // charge per hit
+    parameter SCAN_MODE=0                // 0 = external scan_addr; 1 = internal free-running scan
 )(
     input  wire          clk, rst,
     input  wire          in_valid,
     input  wire [XW-1:0] in_x,
     input  wire [YW-1:0] in_y,
     input  wire          in_pol,
-    input  wire [AW-1:0] scan_addr,
+    input  wire [AW-1:0] scan_addr,      // used only when SCAN_MODE=0
     output wire          out_valid,
     output reg  [XW-1:0] out_x = {XW{1'b0}},
     output reg  [YW-1:0] out_y = {YW{1'b0}},
@@ -38,6 +52,11 @@ module lif_tile_tmux #(
     localparam HY = AW - HX;
     wire [AW-1:0] hashed_xy = {in_x[XW-1:XW-HX], in_y[YW-1:YW-HY]};
 
+    // Internal free-running scan counter (SCAN_MODE=1). Visits every neuron
+    // once per 2^AW cycles, giving a well-defined background leak cadence.
+    reg [AW-1:0] int_scan_addr = {AW{1'b0}};
+    wire [AW-1:0] eff_scan = SCAN_MODE ? int_scan_addr : scan_addr;
+
 `ifdef LIBELLULA_DIAG
     (* keep, syn_keep *) reg [31:0] events_presented = 32'd0;
     (* keep, syn_keep *) reg [31:0] events_accepted  = 32'd0;
@@ -53,8 +72,8 @@ module lif_tile_tmux #(
 `endif
 
     wire event_pending = in_valid;
-    wire [AW-1:0] scan_addr_target = event_pending ? hashed_xy : scan_addr;
-    wire retime_event = in_valid && (hashed_xy != scan_addr);
+    wire [AW-1:0] scan_addr_target = event_pending ? hashed_xy : eff_scan;
+    wire retime_event = in_valid && (hashed_xy != eff_scan);
 
     reg [AW-1:0] scan_addr_s1;
     reg          hit_s1;
@@ -63,8 +82,7 @@ module lif_tile_tmux #(
     reg          pol_s1;
 
     // Sequential reset counter: clears one state_mem cell per clock cycle
-    // during reset.  After 2^AW cycles of asserted reset all cells are zero.
-    // Does not affect scan_addr_s1 (pipeline register) or normal operation.
+    // during reset. After 2^AW cycles of asserted reset all cells are zero.
     reg [AW-1:0] rst_clear_addr = {AW{1'b0}};
 
     wire [SW-1:0] st_read = state_mem[scan_addr_s1];
@@ -86,11 +104,10 @@ module lif_tile_tmux #(
 
     always @(posedge clk) begin
         if (rst) begin
-            // Clear one state_mem cell per cycle; all 2^AW cells are zero
-            // after 2^AW consecutive reset cycles.
             state_mem[rst_clear_addr] <= {SW{1'b0}};
             rst_clear_addr            <= rst_clear_addr + 1'b1;
 
+            int_scan_addr <= {AW{1'b0}};
             scan_addr_s1 <= {AW{1'b0}};
             hit_s1 <= 1'b0;
             x_s1 <= {XW{1'b0}};
@@ -111,6 +128,8 @@ module lif_tile_tmux #(
 `endif
         end else begin
             rst_clear_addr <= {AW{1'b0}};   // reset the counter for next rst pulse
+            // Advance internal background scan (only meaningful when SCAN_MODE=1)
+            int_scan_addr <= int_scan_addr + 1'b1;
 `ifdef LIBELLULA_DIAG
             if (in_valid)
                 events_presented <= events_presented + 32'd1;
