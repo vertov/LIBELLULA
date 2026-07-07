@@ -142,6 +142,7 @@ module tb_accuracy;
     // -----------------------------------------------------------------------
     integer step_idx, h, ev_total;
     integer cur_tx;
+    reg acc_ok;
 
     initial begin
         ev_total = 0;
@@ -172,10 +173,21 @@ module tb_accuracy;
         repeat(8192) @(posedge clk);
 
         // -----------------------------------------------------------------------
-        // Summary report
+        // Summary report with HARD regression bounds.
+        // A bench that cannot fail its own claim is documentation, not a test:
+        // status is PASS only when predictions fire AND the error stays inside
+        // the measured envelope of the current design (mean <= 2 px, peak
+        // <= 16 px on x — one AW=8 acquisition transient — and <= 2 px on y).
+        // Tighten these bounds as accuracy work lands; do not loosen them.
         // -----------------------------------------------------------------------
+        acc_ok = (pred_cnt > 0)
+              && (err_sum   <= 2 * pred_cnt)   // mean_x <= 2 px
+              && (err_max   <= 16)             // peak_x: acquisition transient bound
+              && (err_y_sum <= 2 * pred_cnt)   // mean_y <= 2 px
+              && (err_y_max <= 2);             // peak_y: no motion on y
+
         $display("ACC_RESULT status=%s preds=%0d ev=%0d lif=%0d ds=%0d burst=%0d",
-                 (pred_cnt > 0) ? "PASS" : "FAIL",
+                 acc_ok ? "PASS" : "FAIL",
                  pred_cnt, ev_total, lif_cnt, ds_cnt, burst_cnt);
         if (pred_cnt > 0) begin
             $display("ACC_ERROR  mean_x=%0d.%01d max_x=%0d  mean_y=%0d.%01d max_y=%0d  (pixels)",
@@ -191,6 +203,8 @@ module tb_accuracy;
                 $display("CLAIM_CHECK PARTIAL: peak error %0dpx (tile-size limited; need higher AW for ≤2px)", err_max);
             else
                 $display("CLAIM_CHECK FAIL: peak error %0dpx", err_max);
+            if (!acc_ok)
+                $display("FAIL: accuracy regression — bounds are mean<=2px, max_x<=16px, max_y<=2px");
         end else
             $display("FAIL: pred_valid never asserted");
 
