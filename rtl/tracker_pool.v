@@ -29,7 +29,8 @@ module tracker_pool #(
     parameter COAST_TIMEOUT = 4,
     parameter OUTLIER_TH    = 128,
     parameter VEL_INIT      = 0,
-    parameter VEL_SAT_MAX   = 64
+    parameter VEL_SAT_MAX   = 64,
+    parameter DIR_HINT_SHIFT = 10
 )(
     input  wire clk, rst,
     input  wire in_valid,
@@ -225,7 +226,8 @@ module tracker_pool #(
                 .XW(XW), .YW(YW), .PW(PW),
                 .OUTLIER_TH(OUTLIER_TH),
                 .VEL_INIT(VEL_INIT),
-                .VEL_SAT_MAX(VEL_SAT_MAX)
+                .VEL_SAT_MAX(VEL_SAT_MAX),
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
             ) u_pred (
                 .clk      (clk),
                 .rst      (rst),
