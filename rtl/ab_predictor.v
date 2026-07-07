@@ -32,10 +32,14 @@ module ab_predictor #(
                                 // On the first measurement, velocity is pre-loaded as
                                 // sign(dir_x)*VEL_INIT rather than zero, cutting warm-up lag.
                                 // Set to the expected tile step size (e.g. 64 for AW=8,XW=10).
-    parameter VEL_SAT_MAX=64    // Velocity saturation limit in pixels/update.
+    parameter VEL_SAT_MAX=64,   // Velocity saturation limit in pixels/update.
                                 // Must be >= VEL_INIT. Set to 2*tile_px for headroom.
                                 // Default 64 matches AW=8 (tile=64px). For AW=6 (tile=128px)
                                 // use 256; for AW=10 (tile=32px) the default is sufficient.
+    parameter DIR_HINT_SHIFT=10 // Reichardt direction -> velocity hint scaling.
+                                // hint_px = dir_x / 2^DIR_HINT_SHIFT (see note below).
+                                // Default 10 reproduces the legacy near-zero hint so
+                                // existing unit tests are unchanged; the SoC overrides it.
 )(
     input  wire clk, rst,
     input  wire soft_rst,       // Per-tracker reset (from tracker pool); clears state but not output regs
@@ -190,9 +194,17 @@ module ab_predictor #(
     wire signed [QW-1:0] vel_corr_y = vel_corr_y_wide >>> 8;
     /* verilator lint_on  WIDTHTRUNC */
 
-    // Direction hint for velocity (scaled to Q8.8)
-    wire signed [QW-1:0] dir_vx = $signed({{(QW-8){dir_x[7]}}, dir_x}) <<< 2;
-    wire signed [QW-1:0] dir_vy = $signed({{(QW-8){dir_y[7]}}, dir_y}) <<< 2;
+    // Direction hint -> velocity nudge, in Q8.8 px/update.
+    // dir_x is the Reichardt correlation magnitude (signed, ~[-128,127]).
+    // Extend to Q8.8 (raw value = dir_x px) then scale:  hint_px = dir_x / 2^DIR_HINT_SHIFT.
+    // The previous code did (<<<2) then (>>>4) = net /4 in Q8.8 RAW units = dir_x/1024 px,
+    // i.e. ~0.12 px even at full magnitude, so the motion detector's magnitude was
+    // effectively discarded. DIR_HINT_SHIFT makes the scaling explicit and auditable.
+    // Retune in simulation before relying on it (SoC uses a meaningful value).
+    wire signed [QW-1:0] dir_x_q = $signed({{(QW-8){dir_x[7]}}, dir_x}) <<< 8;
+    wire signed [QW-1:0] dir_y_q = $signed({{(QW-8){dir_y[7]}}, dir_y}) <<< 8;
+    wire signed [QW-1:0] dir_vx  = dir_x_q >>> DIR_HINT_SHIFT;
+    wire signed [QW-1:0] dir_vy  = dir_y_q >>> DIR_HINT_SHIFT;
 
     // Corrected position estimate
     wire signed [QW-1:0] x_corrected = x_pred + pos_corr_x;
@@ -202,8 +214,8 @@ module ab_predictor #(
     // Uses vx_base / vy_base (not vx_q / vy_q directly) so that on a reversal
     // the accumulated momentum from the old direction is discarded before the
     // residual correction and direction hint are applied.
-    wire signed [QW-1:0] vx_new = vx_base + vel_corr_x + (dir_vx >>> 4);
-    wire signed [QW-1:0] vy_new = vy_base + vel_corr_y + (dir_vy >>> 4);
+    wire signed [QW-1:0] vx_new = vx_base + vel_corr_x + dir_vx;
+    wire signed [QW-1:0] vy_new = vy_base + vel_corr_y + dir_vy;
 
     // Velocity saturation function
     function signed [QW-1:0] saturate_vel;
