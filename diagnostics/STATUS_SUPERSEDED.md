@@ -45,6 +45,37 @@ Simulators: Icarus Verilog 11.0 (initial run) and 12.0 (independent re-run,
   1 Meps throughput and 300 Hz benches pass, all 20 scenario benches pass
   (reversal, clutter, multi-target pool included), all 3 hostile benches pass.
 
+## Stability follow-up landed (2026-07-07)
+
+- **CI**: `.github/workflows/ci.yml` runs the full iverilog regression
+  (units, claims, scenarios, hostile, diagnostic) on every push/PR. Benches
+  signal failure by printing rather than exit code, so each CI step greps
+  its log for FAIL/TIMEOUT — a printed FAIL now fails the build.
+- **Hard accuracy bounds**: `tb_accuracy` now FAILS (not just reports) when
+  mean error > 2 px, peak x > 16 px, or peak y > 2 px. A bench that cannot
+  fail its claim is documentation, not a test.
+- **Background-activity filter** (`rtl/activity_filter.v`): spatiotemporal
+  BAF in front of the LIF — an event passes only with own-tile or
+  8-neighbour activity within AF_WINDOW cycles. Zero added latency
+  (combinational pass, clocked bookkeeping), recency bit-map + timestamp
+  scrubber (expiry within WINDOW..WINDOW+2^AW cycles). Default OFF at
+  `libellula_top` (sparse workloads are legitimate for the bare core);
+  the SoC/UAV profile enables it. Validated by `tb_activity_filter`
+  (8 unit tests) and `tb_e2e_filter` (end-to-end: 10/10 injected noise
+  events dropped, 1 cold-start drop, pipeline predicts normally).
+- **Innovation-scheduled predictor gain** (`ab_predictor` ADAPT_GAIN) and
+  **lock-gated measurement smoothing** (MEAS_FILT): alpha scales down /2
+  then /4 when the smoothed residual is small AND the direction hint is
+  quiet; the measurement EMA engages only in that locked-quiet regime.
+  Unit-proven in `tb_ab_adaptive`: 12-16% lower tracking error under
+  measurement noise, and a hover-jitter win with the EMA engaged. Both
+  are OPT-IN (default 0 everywhere): with gains scheduled, the alpha
+  correction no longer masks (a) the direction-hint velocity bias
+  (+4 px steady offset at 1 px/update drift in tb_px_bound_300hz) and
+  (b) tile-transition error spikes in tb_accuracy (peak 16 -> 52 px).
+  Both interactions are properties of the hint/tile design that full
+  alpha was hiding, not of the scheduler itself — see open item 6.
+
 ## Still open (not blockers, but do before trusting numbers)
 
 1. ~~Two pipeline benches — `tb_pred_valid_golden`, `tb_pred_must_fire` — fail
@@ -67,3 +98,13 @@ Simulators: Icarus Verilog 11.0 (initial run) and 12.0 (independent re-run,
    predictor only ever sees tile-hashed coordinates. Feed it the raw pixel
    `x_tap`/`y_tap` (already available) or a per-tile event centroid to attack
    the <=2 px claim directly; raising AW trades area for the same effect.
+6. **Direction-hint bias rework, then ADAPT_GAIN default-on.** The Reichardt
+   hint adds velocity every update; at full alpha (0.75) the position
+   correction cancels ~75% of the resulting offset in the output, which is
+   why the bias was never visible. Any gain reduction re-exposes it. Make
+   the hint bias-free (apply it only during acquisition, or high-pass it so
+   sustained hints decay), re-tune the ADAPT_GAIN thresholds against the
+   scenario suite, then flip ADAPT_GAIN=1 as the top-level default.
+7. **Hot-pixel rate cap.** The BAF drops isolated noise but a hot pixel
+   self-supports after its first event. A per-tile event-rate cap (or
+   refractory counter) in `activity_filter` would close that hole cheaply.
