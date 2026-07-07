@@ -62,7 +62,28 @@ module libellula_top #(
     parameter LIF_SCAN_MODE  = 1,
     // Reichardt direction -> predictor velocity hint scaling (hint_px = dir/2^N).
     // 3 gives ~16 px/update at full direction magnitude (dir=127); tune in sim.
-    parameter DIR_HINT_SHIFT = 3
+    parameter DIR_HINT_SHIFT = 3,
+    // Predictor innovation-scheduled position gain: alpha scales down while
+    // the smoothed residual is small AND the direction hint is quiet,
+    // restoring full gain on large residuals or active hints. Proven at unit
+    // level (tb_ab_adaptive: 12-16% lower tracking error, hover jitter win).
+    // Default OFF: in the full pipeline the scheduler interacts with
+    // tile-quantised measurement bursts (accuracy peak error grows when gain
+    // drops right before a tile transition) — needs a tuning pass against
+    // the scenario suite before it can default on. Opt-in per instance.
+    parameter ADAPT_GAIN = 0,
+    // Lock-gated measurement smoothing (/4 EMA while locked, auto-bypass on
+    // manoeuvre). Default OFF: the EMA adds (2^2-1) * v px of steady lag
+    // under sustained motion, which violates the +/-2 px @300 Hz claim at
+    // 1 px/update drift (tb_px_bound_300hz). Enable only for quasi-static
+    // or hover scenarios. 0 = raw measurements (legacy).
+    parameter MEAS_FILT = 0,
+    // Background-activity filter in front of the LIF: drop events with no
+    // spatial support (own or 8-neighbour tile active within AF_WINDOW
+    // cycles). Default OFF: sparse-event workloads are legitimate for the
+    // bare core; the SoC/UAV profile enables it. Zero latency either way.
+    parameter AF_EN = 0,
+    parameter AF_WINDOW = 2048
 )(
     input  wire clk, rst,
     // AER interface
@@ -99,6 +120,27 @@ module libellula_top #(
     );
 
     //=========================================================================
+    // Stage 1b: Background-Activity Filter (+0 cycles, combinational pass)
+    // Drops events with no recent spatial support before they reach the LIF.
+    // Transparent when AF_EN=0 (default); enabled in the SoC/UAV profile.
+    //=========================================================================
+    wire af_v;
+    wire [XW-1:0] af_x;
+    wire [YW-1:0] af_y;
+    wire af_p;
+    wire af_dropped;
+
+    activity_filter #(
+        .XW(XW), .YW(YW), .AW(AW),
+        .WINDOW(AF_WINDOW), .EN(AF_EN)
+    ) u_af (
+        .clk(clk), .rst(rst),
+        .in_valid(ev_v), .in_x(ev_x), .in_y(ev_y), .in_pol(ev_p),
+        .out_valid(af_v), .out_x(af_x), .out_y(af_y), .out_pol(af_p),
+        .dropped(af_dropped)
+    );
+
+    //=========================================================================
     // Stage 2: LIF Time-Multiplexed Array (+2 cycles due to 2-stage pipeline)
     //=========================================================================
     wire lif_v;
@@ -116,7 +158,7 @@ module libellula_top #(
         .SCAN_MODE(LIF_SCAN_MODE)
     ) u_lif (
         .clk(clk), .rst(rst),
-        .in_valid(ev_v), .in_x(ev_x), .in_y(ev_y), .in_pol(ev_p),
+        .in_valid(af_v), .in_x(af_x), .in_y(af_y), .in_pol(af_p),
         .scan_addr(scan_addr),
         .out_valid(lif_v), .out_x(lif_x), .out_y(lif_y), .out_pol(lif_p),
         .out_ex(lif_ex), .out_ey(lif_ey)
@@ -262,7 +304,9 @@ module libellula_top #(
                 .XW(XW), .YW(YW), .PW(PW),
                 .VEL_INIT(TILE_STEP_PX),
                 .VEL_SAT_MAX(VEL_SAT),
-                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT),
+                .ADAPT_GAIN(ADAPT_GAIN),
+                .MEAS_FILT(MEAS_FILT)
             ) u_ab (
                 .clk(clk), .rst(rst), .soft_rst(1'b0),
                 .in_valid(bg_v),
@@ -279,7 +323,9 @@ module libellula_top #(
                 .COAST_TIMEOUT(COAST_TIMEOUT),
                 .VEL_INIT(TILE_STEP_PX),
                 .VEL_SAT_MAX(VEL_SAT),
-                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT),
+                .ADAPT_GAIN(ADAPT_GAIN),
+                .MEAS_FILT(MEAS_FILT)
             ) u_pool (
                 .clk(clk), .rst(rst),
                 .in_valid(bg_v),

@@ -36,10 +36,25 @@ module ab_predictor #(
                                 // Must be >= VEL_INIT. Set to 2*tile_px for headroom.
                                 // Default 64 matches AW=8 (tile=64px). For AW=6 (tile=128px)
                                 // use 256; for AW=10 (tile=32px) the default is sufficient.
-    parameter DIR_HINT_SHIFT=10 // Reichardt direction -> velocity hint scaling.
+    parameter DIR_HINT_SHIFT=10,// Reichardt direction -> velocity hint scaling.
                                 // hint_px = dir_x / 2^DIR_HINT_SHIFT (see note below).
                                 // Default 10 reproduces the legacy near-zero hint so
                                 // existing unit tests are unchanged; the SoC overrides it.
+    parameter ADAPT_GAIN=0,     // 1 = innovation-scheduled POSITION gain: when the
+                                // smoothed residual magnitude is small (locked), alpha
+                                // is scaled down (/2 then /4) to suppress position
+                                // jitter; large residuals restore full gain for fast
+                                // acquisition/manoeuvre response. Beta and the
+                                // direction hint stay at full strength — scaling them
+                                // shifts the ramp-tracking equilibrium and adds bias
+                                // (measured in tb_ab_adaptive).
+                                // 0 = fixed gains (legacy behaviour, bit-exact).
+    parameter MEAS_FILT=0       // 1 = lock-gated measurement smoothing: while locked
+                                // (smoothed residual < 2 px) measurements pass through
+                                // a /4 EMA before the residual is formed, averaging
+                                // event-position noise. Disengages automatically the
+                                // moment the innovation grows (no acquisition lag).
+                                // 0 = raw measurements (legacy behaviour, bit-exact).
 )(
     input  wire clk, rst,
     input  wire soft_rst,       // Per-tracker reset (from tracker pool); clears state but not output regs
@@ -159,13 +174,58 @@ module ab_predictor #(
     wire signed [QW-1:0] meas_x_q = $signed({{(QW-XW-8){1'b0}}, in_x, 8'b0});
     wire signed [QW-1:0] meas_y_q = $signed({{(QW-YW-8){1'b0}}, in_y, 8'b0});
 
+    // -----------------------------------------------------------------------
+    // Innovation monitor (ADAPT_GAIN / MEAS_FILT support)
+    // -----------------------------------------------------------------------
+    // innov_avg is an EMA (/4) of the L1 residual magnitude, updated on every
+    // ACCEPTED measurement. It is registered state, so the lock decision each
+    // cycle is based on the residual history up to the PREVIOUS measurement —
+    // no combinational loop with the residual computed below.
+    //   innov_avg <  2 px : locked  -> minimum gain, measurement EMA engaged
+    //   innov_avg <  8 px : settling-> half gain
+    //   otherwise         : acquiring/manoeuvring -> full gain, raw measurements
+    localparam [QW-1:0] INNOV_LO_Q = 2 << 8;   // 2 px in Q8.8
+    localparam [QW-1:0] INNOV_HI_Q = 8 << 8;   // 8 px in Q8.8
+    reg [QW-1:0] innov_avg = INNOV_HI_Q;       // start at full gain (acquisition)
+
+    // Gain scheduling is gated on the direction hint being quiet. The hint
+    // injects velocity every update, which the alpha correction largely
+    // cancels in the output at full gain; attenuating alpha while the hint
+    // is active re-exposes that bias as steady output offset (measured:
+    // +4 px at 1 px/update drift in tb_px_bound_300hz). When the hint is
+    // below the noise floor there is no bias to expose and gain reduction
+    // is pure jitter win.
+    wire hint_quiet = (dir_x <= REVERSAL_TH_POS) && (dir_x >= REVERSAL_TH_NEG)
+                   && (dir_y <= REVERSAL_TH_POS) && (dir_y >= REVERSAL_TH_NEG);
+
+    wire locked = (innov_avg < INNOV_LO_Q) && hint_quiet;
+    wire [1:0] gain_shift = (ADAPT_GAIN == 0 || !hint_quiet) ? 2'd0 :
+                            (innov_avg < INNOV_LO_Q)         ? 2'd2 :
+                            (innov_avg < INNOV_HI_Q)         ? 2'd1 : 2'd0;
+
+    // Lock-gated measurement smoothing: /4 EMA of the measurement while
+    // locked; reseeded to the raw measurement whenever unlocked so there is
+    // never smoothing lag during acquisition or manoeuvres.
+    reg signed [QW-1:0] mx_f = {QW{1'b0}};
+    reg signed [QW-1:0] my_f = {QW{1'b0}};
+    wire signed [QW-1:0] mx_next = mx_f + ((meas_x_q - mx_f) >>> 2);
+    wire signed [QW-1:0] my_next = my_f + ((meas_y_q - my_f) >>> 2);
+    wire use_filt = (MEAS_FILT != 0) && locked && initialized;
+    wire signed [QW-1:0] meas_x_eff = use_filt ? mx_next : meas_x_q;
+    wire signed [QW-1:0] meas_y_eff = use_filt ? my_next : meas_y_q;
+
     // Predicted position (prior to correction)
     wire signed [QW-1:0] x_pred = x_q + vx_q;
     wire signed [QW-1:0] y_pred = y_q + vy_q;
 
     // Residual (measurement - prediction)
-    wire signed [QW-1:0] res_x = meas_x_q - x_pred;
-    wire signed [QW-1:0] res_y = meas_y_q - y_pred;
+    wire signed [QW-1:0] res_x = meas_x_eff - x_pred;
+    wire signed [QW-1:0] res_y = meas_y_eff - y_pred;
+
+    // L1 residual magnitude for the innovation monitor (Q8.8, always >= 0)
+    wire [QW-1:0] abs_res_x = res_x[QW-1] ? -res_x : res_x;
+    wire [QW-1:0] abs_res_y = res_y[QW-1] ? -res_y : res_y;
+    wire [QW-1:0] res_mag   = abs_res_x + abs_res_y;
 
     // Outlier detection: reject measurements with large residuals
     // Threshold is in Q8.8 format (shift OUTLIER_TH by 8)
@@ -187,9 +247,14 @@ module ab_predictor #(
 
     // Arithmetic right-shift narrows MW=33 bits to QW=24 bits; upper 9 bits are sign
     // extension of the shifted-out integer portion and are safe to discard.
+    // gain_shift (0 when ADAPT_GAIN=0) scales the effective ALPHA down by 2
+    // or 4 while locked — innovation-scheduled position gain. Beta is left
+    // at full strength: velocity jitter integrates far less into the output
+    // than position jitter, and attenuating beta (or the hint) moves the
+    // ramp-tracking equilibrium, trading jitter for bias.
     /* verilator lint_off WIDTHTRUNC */
-    wire signed [QW-1:0] pos_corr_x = pos_corr_x_wide >>> 8;
-    wire signed [QW-1:0] pos_corr_y = pos_corr_y_wide >>> 8;
+    wire signed [QW-1:0] pos_corr_x = pos_corr_x_wide >>> (8 + gain_shift);
+    wire signed [QW-1:0] pos_corr_y = pos_corr_y_wide >>> (8 + gain_shift);
     wire signed [QW-1:0] vel_corr_x = vel_corr_x_wide >>> 8;
     wire signed [QW-1:0] vel_corr_y = vel_corr_y_wide >>> 8;
     /* verilator lint_on  WIDTHTRUNC */
@@ -266,6 +331,10 @@ module ab_predictor #(
             // falsely trigger a reversal against stale pre-reset direction state.
             dir_x_prev <= 8'sd0;
             dir_y_prev <= 8'sd0;
+            // Innovation monitor restarts at full gain; measurement EMA cleared
+            innov_avg <= INNOV_HI_Q;
+            mx_f <= {QW{1'b0}};
+            my_f <= {QW{1'b0}};
             if (rst) begin
                 x_hat <= {PW{1'b0}};
                 y_hat <= {PW{1'b0}};
@@ -298,6 +367,10 @@ module ab_predictor #(
                     x_hat <= {{(PW-XW){1'b0}}, in_x};
                     y_hat <= {{(PW-YW){1'b0}}, in_y};
                     initialized <= 1'b1;
+                    // Acquisition posture: full gain, EMA seeded to measurement
+                    innov_avg <= INNOV_HI_Q;
+                    mx_f <= meas_x_q;
+                    my_f <= meas_y_q;
                 end else if (is_outlier) begin
                     // Outlier detected: coast using velocity, don't apply measurement
                     // Position advances by prediction only
@@ -323,6 +396,12 @@ module ab_predictor #(
                     // Output clamped integer position
                     x_hat <= {{(PW-XW){1'b0}}, x_clamped};
                     y_hat <= {{(PW-YW){1'b0}}, y_clamped};
+                    // Innovation EMA tracks accepted-measurement residuals only
+                    // (outliers must not drive the gain schedule); measurement
+                    // EMA commits the value the residual was formed from.
+                    innov_avg <= innov_avg - (innov_avg >> 2) + (res_mag >> 2);
+                    mx_f <= meas_x_eff;
+                    my_f <= meas_y_eff;
                 end
                 out_valid_int <= 1'b1;
             end

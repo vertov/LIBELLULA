@@ -30,7 +30,9 @@ module tracker_pool #(
     parameter OUTLIER_TH    = 128,
     parameter VEL_INIT      = 0,
     parameter VEL_SAT_MAX   = 64,
-    parameter DIR_HINT_SHIFT = 10
+    parameter DIR_HINT_SHIFT = 10,
+    parameter ADAPT_GAIN    = 0,
+    parameter MEAS_FILT     = 0
 )(
     input  wire clk, rst,
     input  wire in_valid,
@@ -227,7 +229,9 @@ module tracker_pool #(
                 .OUTLIER_TH(OUTLIER_TH),
                 .VEL_INIT(VEL_INIT),
                 .VEL_SAT_MAX(VEL_SAT_MAX),
-                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT),
+                .ADAPT_GAIN(ADAPT_GAIN),
+                .MEAS_FILT(MEAS_FILT)
             ) u_pred (
                 .clk      (clk),
                 .rst      (rst),
