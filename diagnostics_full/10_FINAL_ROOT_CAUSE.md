@@ -1,3 +1,10 @@
+> **⚠ SUPERSEDED / STALE — parameters no longer match the RTL.**
+> This root-cause was correct for `LEAK_SHIFT=2 / THRESH=16` (fixed point at 4).
+> The current top-level default is `LIF_LEAK_SHIFT=4`, for which the accumulator
+> reaches THRESH=16 and spikes. This document therefore no longer describes the
+> shipped configuration. A fresh full-pipeline run is required to replace it.
+> See `diagnostics/STATUS_SUPERSEDED.md`.
+
 # Final Root Cause Report
 
 **Independent verification run 2026-04-11. Simulator: Icarus Verilog 12.0 / vvp.**
