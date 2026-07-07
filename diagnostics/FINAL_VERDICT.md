@@ -1,3 +1,13 @@
+> **⚠ SUPERSEDED / STALE — DO NOT CITE AS CURRENT STATUS.**
+> This verdict describes an earlier state of the RTL. It assumes an `(x ^ y)`
+> LIF address hash and a permanently non-spiking core. The current
+> `rtl/lif_tile_tmux.v` uses a *concatenation* hash of the high address bits
+> **plus a retime mechanism** that services an event's own neuron on arrival,
+> and the top-level default is `LIF_LEAK_SHIFT=4` (not 2). Under those defaults
+> a sustained-hit neuron spikes (verified: state reaches THRESH=16 at hit 15).
+> A fresh end-to-end run under current defaults is still required to replace
+> this document. See `diagnostics/STATUS_SUPERSEDED.md`.
+
 # Final Verdict
 
 ## 1. Executive finding
