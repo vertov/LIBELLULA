@@ -53,7 +53,16 @@ module libellula_top #(
     //   UAV profile uses BG_WINDOW_OVR=4 (short density window); when doing so
     //   also set BG_TH_OPEN=1 — the TH_OPEN=2 invariant no longer applies at
     //   UAV event densities where bg_v fires well within any 4-scan window.
-    parameter integer BG_WINDOW_OVR = 0
+    parameter integer BG_WINDOW_OVR = 0,
+    // -------------------------------------------------------------------------
+    // fix/pipeline-rework additions
+    // -------------------------------------------------------------------------
+    // LIF background scan: 1 = internal free-running (well-defined leak cadence),
+    // 0 = externally-driven via scan_addr (legacy).
+    parameter LIF_SCAN_MODE  = 1,
+    // Reichardt direction -> predictor velocity hint scaling (hint_px = dir/2^N).
+    // 3 gives ~16 px/update at full direction magnitude (dir=127); tune in sim.
+    parameter DIR_HINT_SHIFT = 3
 )(
     input  wire clk, rst,
     // AER interface
@@ -103,7 +112,8 @@ module libellula_top #(
         .XW(XW),.YW(YW),.AW(AW),
         .LEAK_SHIFT(LIF_LEAK_SHIFT),
         .THRESH(LIF_THRESH),
-        .HIT_WEIGHT(LIF_HIT_WEIGHT)
+        .HIT_WEIGHT(LIF_HIT_WEIGHT),
+        .SCAN_MODE(LIF_SCAN_MODE)
     ) u_lif (
         .clk(clk), .rst(rst),
         .in_valid(ev_v), .in_x(ev_x), .in_y(ev_y), .in_pol(ev_p),
@@ -251,7 +261,8 @@ module libellula_top #(
             ab_predictor #(
                 .XW(XW), .YW(YW), .PW(PW),
                 .VEL_INIT(TILE_STEP_PX),
-                .VEL_SAT_MAX(VEL_SAT)
+                .VEL_SAT_MAX(VEL_SAT),
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
             ) u_ab (
                 .clk(clk), .rst(rst), .soft_rst(1'b0),
                 .in_valid(bg_v),
@@ -267,7 +278,8 @@ module libellula_top #(
                 .ASSIGN_TH(ASSIGN_TH),
                 .COAST_TIMEOUT(COAST_TIMEOUT),
                 .VEL_INIT(TILE_STEP_PX),
-                .VEL_SAT_MAX(VEL_SAT)
+                .VEL_SAT_MAX(VEL_SAT),
+                .DIR_HINT_SHIFT(DIR_HINT_SHIFT)
             ) u_pool (
                 .clk(clk), .rst(rst),
                 .in_valid(bg_v),

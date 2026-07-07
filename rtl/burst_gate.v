@@ -24,8 +24,10 @@
 // - Set COUNT_TH = -1 (default) to use hysteresis with TH_OPEN/TH_CLOSE
 //
 // OUTPUT TIMING:
-// - out_valid asserts in the same cycle as in_valid when gate is open
-// - No pipeline delay: immediate pass-through gating
+// - out_valid is REGISTERED: it asserts one cycle after the in_valid that
+//   passes the gate (out_valid_int is clocked). The gate DECISION is
+//   combinational, but the output is delayed by one cycle. The top-level
+//   timing contract accounts for this (burst gate result at +5).
 module burst_gate #(
     parameter WINDOW=16,
     parameter COUNT_TH=-1,  // Legacy parameter: if >= 0, overrides TH_OPEN/TH_CLOSE
