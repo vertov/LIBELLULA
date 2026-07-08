@@ -23,6 +23,12 @@ def ensure_dir(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _spatial_tile_hash(x: int, y: int, addr_width: int, x_width: int = 10, y_width: int = 10) -> int:
+    hx = addr_width // 2
+    hy = addr_width - hx
+    return ((x >> (x_width - hx)) << hy) | (y >> (y_width - hy))
+
+
 def write_event_file(events: Sequence[ScenarioEvent], path: Path, addr_width: int = 8) -> int:
     ensure_dir(path)
     scan_period = 1 << addr_width
@@ -35,7 +41,7 @@ def write_event_file(events: Sequence[ScenarioEvent], path: Path, addr_width: in
             scenario_cycle = int(evt.cycle)
             x = int(round(evt.x))
             y = int(round(evt.y))
-            hashed = (x ^ y) & period_mask
+            hashed = _spatial_tile_hash(x, y, addr_width) & period_mask
             desired = max(last_sim_cycle + 1, scenario_cycle)
             base = (desired // scan_period) * scan_period
             sim_cycle = base + hashed

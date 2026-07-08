@@ -19,8 +19,13 @@ jobs:
       - name: Install Icarus Verilog
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends iverilog
+          sudo apt-get install -y --no-install-recommends iverilog verilator
           iverilog -V | head -1
+          verilator --version
+
+      - name: Verilator lint
+        run: |
+          make -C sim -s lint 2>&1 | tee lint.log
 
       - name: Unit benches
         run: |

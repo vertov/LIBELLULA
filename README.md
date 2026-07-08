@@ -62,7 +62,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 
 **Spatial tile hash:** `{in_x[XW-1:XW-HX], in_y[YW-1:YW-HY]}` — locality-preserving, required for Reichardt adjacency. XOR hashes are not locality-preserving and break direction detection.
 
-**Exact-coordinate path:** LIF carries original AER pixel coordinates in parallel with tile indices. Predictor output (`x_hat`/`y_hat`) is sub-tile accurate in Q8.8 fixed-point.
+**Exact-coordinate path:** LIF carries original AER pixel coordinates in parallel with tile indices. The predictor keeps Q8.8 internal state but the public `x_hat`/`y_hat` ports currently export integer pixel coordinates padded to `PW`.
 
 **Activity-proportional power:** LIF is time-multiplexed; burst gate blocks the predictor during low-activity periods. Power scales sub-linearly with scene event rate.
 
@@ -181,13 +181,13 @@ All claims below are backed by simulation evidence in the test suite. Scope note
 
 | Claim | Bench | Result |
 |-------|-------|--------|
-| Pipeline latency ≤ 5 cycles at 200 MHz | `tb_latency` | LATENCY_CYCLES=5, measured |
-| Prediction error ≤ ±2 px, constant-velocity motion | `tb_px_bound_300hz` | 0 violations over 300 Hz stream |
+| Minimum pipeline latency ≤ 5 cycles at 200 MHz | `tb_latency` | LATENCY_CYCLES=5 with latency-mode LIF/gate settings |
+| Steady-state prediction error ≤ ±2 px, constant-velocity motion | `tb_px_bound_300hz` / `tb_accuracy` | 0 violations after warmup in 300 Hz stream; `tb_accuracy` mean_x=1 px, peak_x=16 px acquisition/tile transient |
 | 1 Meps sustained throughput, zero event drops | `tb_aer_throughput_1meps` | 2000/2000 ACK=REQ |
 | pred_valid and conf_valid suppressed during reset | `tb_reset_midstream_top` | 0 valid leaks over 266-cycle reset |
 | Deterministic re-entry after reset | `tb_reset_midstream_top` | Phase-1/phase-2 outputs bit-exact |
 | state_mem cleared after 2^AW reset cycles | `tb_formal_props` (P3) | All 256 cells verified |
-| No X/Z on output ports, any stimulus | `tb_formal_props` (P2) | 50 K cycles, LFSR seed 0xDEADBEEF |
+| No X/Z on key control outputs under pseudo-random stimulus | `tb_formal_props` (P2) | `pred_valid`, `conf_valid`, `aer_ack` checked for 50 K cycles, LFSR seed 0xDEADBEEF |
 | Output saturation: upper bits zero on pred_valid | `tb_formal_props` (P4) | Holds for all observed states |
 | Two identically-stimulated DUTs bit-exact | `tb_deterministic_replay` / `tb_formal_props` (P5) | Zero divergence |
 | Clutter rejection: MAE ≤ baseline under background | `tb_cross_clutter` | Holds for 8-tile clutter scenario |
@@ -215,7 +215,7 @@ Full requirements traceability: `make req_trace` → `build/req_trace.md` (23 re
 | `XW` | 10 | Sensor X width (bits) |
 | `YW` | 10 | Sensor Y width (bits) |
 | `AW` | 8 | LIF tile address width (2^AW tiles) |
-| `DW` | 6 | Delay lattice depth (2^DW ring entries) |
+| `DW` | 0 | Delay lattice depth (2^DW ring entries); 0 = single previous LIF spike, standard sparse-spike default |
 | `PW` | 16 | Prediction output coordinate width |
 | `NTRACK` | 1 | Tracker instances (1 = single legacy predictor) |
 | `ASSIGN_TH` | 96 | New-tracker L1-distance threshold (pixels) |
@@ -277,8 +277,8 @@ Converts `pred_valid` strobes to an AXI4-Stream master with a depth-4 FIFO for b
 ```
   [47:40]   8'b0         reserved
   [39:32]   conf[7:0]    confidence score
-  [31:16]   y_hat[15:0]  Y prediction (Q8.8 fixed-point)
-  [15: 0]   x_hat[15:0]  X prediction (Q8.8 fixed-point)
+  [31:16]   y_hat[15:0]  Y prediction (integer pixels, zero-extended)
+  [15: 0]   x_hat[15:0]  X prediction (integer pixels, zero-extended)
 ```
 `TKEEP = 6'b111111`  `TLAST = TVALID`  (single-beat frame per prediction)
 
@@ -292,8 +292,8 @@ Full AXI4-S in/out with internal scan counter. No external scan pin required.
   [47:46]   track_id[1:0]    tracker index
   [45:40]   6'b0             reserved
   [39:32]   conf[7:0]        confidence
-  [31:16]   y_hat[15:0]      Y prediction (Q8.8)
-  [15: 0]   x_hat[15:0]      X prediction (Q8.8)
+  [31:16]   y_hat[15:0]      Y prediction (integer pixels, zero-extended)
+  [15: 0]   x_hat[15:0]      X prediction (integer pixels, zero-extended)
 ```
 `TKEEP = 8'hFF`  `TLAST = TVALID`
 

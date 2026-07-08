@@ -24,8 +24,8 @@
 //   [47:46]   track_id    which tracker fired (0–3)
 //   [45:40]    6'b0       reserved / zero
 //   [39:32]    conf       confidence byte
-//   [31:16]    y_hat      Q8.8 Y prediction
-//   [15: 0]    x_hat      Q8.8 X prediction
+//   [31:16]    y_hat      integer Y prediction, zero-extended
+//   [15: 0]    x_hat      integer X prediction, zero-extended
 //
 // TKEEP = 8'hFF (all 8 bytes declared valid; upper 2 are reserved-zero).
 // TLAST = TVALID (one AXI4-S frame per prediction event).
@@ -55,7 +55,7 @@ module libellula_soc #(
     parameter XW     = 10,   // pixel X address width
     parameter YW     = 10,   // pixel Y address width
     parameter AW     =  8,   // tile address width (2^AW LIF neurons)
-    parameter PW     = 16,   // prediction coordinate width (Q8.8)
+    parameter PW     = 16,   // prediction coordinate width (integer pixels, zero-extended)
     parameter DATA_W = 32,   // AXI4-S input TDATA width
 
     // ---- delay lattice ----
