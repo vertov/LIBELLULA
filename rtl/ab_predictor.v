@@ -252,9 +252,10 @@ module ab_predictor #(
     // at full strength: velocity jitter integrates far less into the output
     // than position jitter, and attenuating beta (or the hint) moves the
     // ramp-tracking equilibrium, trading jitter for bias.
+    wire [3:0] alpha_shift = 4'd8 + {2'b00, gain_shift};
     /* verilator lint_off WIDTHTRUNC */
-    wire signed [QW-1:0] pos_corr_x = pos_corr_x_wide >>> (8 + gain_shift);
-    wire signed [QW-1:0] pos_corr_y = pos_corr_y_wide >>> (8 + gain_shift);
+    wire signed [QW-1:0] pos_corr_x = pos_corr_x_wide >>> alpha_shift;
+    wire signed [QW-1:0] pos_corr_y = pos_corr_y_wide >>> alpha_shift;
     wire signed [QW-1:0] vel_corr_x = vel_corr_x_wide >>> 8;
     wire signed [QW-1:0] vel_corr_y = vel_corr_y_wide >>> 8;
     /* verilator lint_on  WIDTHTRUNC */

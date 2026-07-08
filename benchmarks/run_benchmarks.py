@@ -135,8 +135,18 @@ def summarize_wins(reports: List[ScenarioReport], markdown_path: Path) -> None:
             outcome = f"Tie: {', '.join(t[1] for t in tied)}"
         else:
             outcome = f"Win: {scores[0][1]}"
+        lib_note = ""
+        for _, tracker, result in scores:
+            if tracker == "libellula_core":
+                vals = result.values
+                lib_note = (
+                    f"; libellula_core preds={int(vals.get('prediction_count', 0))}, "
+                    f"mae_h1={vals.get('mae_h1', float('nan')):.3f}, "
+                    f"false_lock={vals.get('false_lock_rate', float('nan')):.3f}"
+                )
+                break
         lines.append(
-            f"| {report.scenario.name} | {outcome} | lowest composite score {best_score:.3f} |"
+            f"| {report.scenario.name} | {outcome} | lowest composite score {best_score:.3f}{lib_note} |"
         )
     with markdown_path.open("w") as fh:
         fh.write("\n".join(lines))

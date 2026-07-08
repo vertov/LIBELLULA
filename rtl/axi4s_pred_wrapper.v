@@ -9,8 +9,8 @@
 // TDATA packing (48-bit / 6 bytes):
 //   [47:40]  8'b0        padding (reserved)
 //   [39:32]  conf        confidence byte
-//   [31:16]  y_pred      Q8.8 Y prediction
-//   [15: 0]  x_pred      Q8.8 X prediction
+//   [31:16]  y_pred      integer Y prediction, zero-extended
+//   [15: 0]  x_pred      integer X prediction, zero-extended
 //
 // Back-pressure and multi-target burst:
 //   An internal FIFO (depth FIFO_DEPTH, default 4) absorbs predictions that
@@ -41,8 +41,8 @@ module axi4s_pred_wrapper #(
     // LIBELLULA core outputs  (connect directly to libellula_top ports)
     // -------------------------------------------------------------------------
     input  wire              pred_valid,   // one-cycle strobe when prediction ready
-    input  wire [PW-1:0]     x_pred,       // Q8.8 X coordinate
-    input  wire [PW-1:0]     y_pred,       // Q8.8 Y coordinate
+    input  wire [PW-1:0]     x_pred,       // integer X coordinate, zero-extended
+    input  wire [PW-1:0]     y_pred,       // integer Y coordinate, zero-extended
     input  wire [CONFW-1:0]  conf,         // confidence score
 
     // -------------------------------------------------------------------------

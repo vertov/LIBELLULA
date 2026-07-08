@@ -20,6 +20,9 @@ Results are written to `benchmarks/out/` as:
 * The harness retimes event streams so that hashed addresses align with the
   Libellula LIF scanner, without changing the original scenario timelines used
   for scoring.
+* These scenarios are comparative stress tests, not the release claim benches.
+  Current generated reports include Libellula's own prediction count, h=1 MAE,
+  and false-lock rate beside the winning baseline so weak regimes are visible.
 * If the RTL emits no predictions for a scenario, the CSV entry for
   `libellula_core` is left blank, and the markdown report records the baseline
   winner.

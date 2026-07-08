@@ -51,9 +51,9 @@ AER handshake input
   pred_valid, x_hat, y_hat, conf, conf_valid, track_id
 ```
 
-**Pipeline latency measured:** 5 cycles from `aer_req` assertion to `pred_valid` assertion. Measured in `tb/tb_latency.v` with burst gate bypassed (`COUNT_TH=0`). Under normal operating parameters the burst gate introduces a hold-off period before the first prediction (see §5.3).
+**Pipeline latency measured:** 5 cycles from `aer_req` assertion to `pred_valid` assertion. Measured in `tb/tb_latency.v` with latency-mode LIF/gate settings. Under normal operating parameters the burst gate introduces a hold-off period before the first prediction (see §5.3).
 
-**Exact-coordinate parallel path:** `lif_tile_tmux` outputs both tile-grain coordinates (`out_x`, `out_y`) and the original pixel coordinates (`out_ex`, `out_ey`). The tile coordinates go forward through the delay lattice, Reichardt, and burst gate. The exact pixel coordinates are carried in a parallel delay chain (`ex_d1/ey_d1 → ex_d2/ey_d2 → ex_d3/ey_d3`) and delivered directly to the predictor. This is why prediction accuracy is sub-tile: the α-β filter operates on pixel-resolution measurements, not tile-snapped coordinates.
+**Exact-coordinate parallel path:** `lif_tile_tmux` outputs both tile-grain coordinates (`out_x`, `out_y`) and the original pixel coordinates (`out_ex`, `out_ey`). The tile coordinates go forward through the delay lattice, Reichardt, and burst gate. The exact pixel coordinates are carried in a parallel delay chain (`ex_d1/ey_d1 → ex_d2/ey_d2 → ex_d3/ey_d3`) and delivered directly to the predictor. This is why the filter is not limited to tile-snapped measurements, although the public `x_hat`/`y_hat` outputs are integer pixels.
 
 ### 2.2 Stage-by-Stage Description
 
@@ -226,8 +226,8 @@ Assignment logic (combinational, per `bg_v` pulse):
 |------|-------|-------------|
 | `aer_ack` | 1 | AER acknowledge (combinational: `aer_req && !rst`) |
 | `pred_valid` | 1 | Prediction output strobe |
-| `x_hat` | PW | X prediction, Q8.8 fixed-point (bits [PW-1:8] = integer) |
-| `y_hat` | PW | Y prediction, Q8.8 fixed-point |
+| `x_hat` | PW | X prediction, integer pixels, zero-extended |
+| `y_hat` | PW | Y prediction, integer pixels, zero-extended |
 | `conf` | 8 | Confidence score (0–255) |
 | `conf_valid` | 1 | Confidence strobe |
 | `track_id` | 2 | Tracker index (0 when NTRACK=1) |
@@ -248,7 +248,7 @@ The interface implements a 1-cycle acknowledge protocol. There is no wait state;
 | `YW` | 10 | Sensor Y bit width |
 | `AW` | 8 | LIF tile address width; scan period = 2^AW cycles; tile size = 2^((XW-AW/2)) × 2^((YW-(AW-AW/2))) pixels |
 | `DW` | 0 | Delay lattice depth = 2^DW; 0 = single-event delay (recommended for sparse LIF spikes) |
-| `PW` | 16 | Prediction output width; must accommodate Q8.8 representation of max coordinate |
+| `PW` | 16 | Prediction output width; must accommodate zero-extended integer coordinates |
 | `NTRACK` | 1 | Tracker count; >1 instantiates tracker_pool |
 | `ASSIGN_TH` | 96 | Tracker assignment L1-distance threshold (pixels) |
 | `COAST_TIMEOUT` | 4 | Missed-update cycles before tracker retirement |
@@ -292,8 +292,8 @@ Converts `pred_valid` strobes to an AXI4-Stream master. Includes a depth-4 FIFO 
 ```
 [47:40]  8'b0     reserved
 [39:32]  conf[7:0]
-[31:16]  y_hat[15:0]   Q8.8
-[15: 0]  x_hat[15:0]   Q8.8
+[31:16]  y_hat[15:0]   integer pixels, zero-extended
+[15: 0]  x_hat[15:0]   integer pixels, zero-extended
 ```
 `TKEEP = 6'b111111`, `TLAST = TVALID` (single-beat transaction per prediction).
 
@@ -322,7 +322,7 @@ Reset convention: `libellula_top` uses active-high `rst`; AXI bridges use active
 
 ### 4.1 Pipeline Propagation
 
-End-to-end latency from `aer_req` to `pred_valid`: **5 clock cycles**, measured in `tb/tb_latency.v` with burst gate configured as pass-through (COUNT_TH=0).
+End-to-end latency from `aer_req` to `pred_valid`: **5 clock cycles**, measured in `tb/tb_latency.v` with latency-mode LIF/gate settings.
 
 This measurement is under ideal conditions. The burst gate is bypassed; the LIF receives a pre-aligned event on a pre-charged neuron. This gives the minimum achievable latency for a cold-start-free, gate-open condition.
 
@@ -457,7 +457,7 @@ Every assertion-based bench produces `PASS` or `FAIL: <description>` via `$displ
 ### 6.4 Key Claim Bench Details
 
 **tb_latency.v:**  
-Drives a single event, measures cycle count from `aer_req` assertion to `pred_valid` assertion. Burst gate set to pass-through (COUNT_TH=0). Asserts LATENCY_CYCLES ≤ 6. Result: 5 cycles.  
+Drives a single event, measures cycle count from `aer_req` assertion to `pred_valid` assertion. The bench uses latency-mode LIF/gate settings. Result: 5 cycles.  
 *Caveat:* Burst gate bypass means this is the minimum achievable latency. Normal operation with burst gate enabled delays first prediction until gate-open conditions are met.
 
 **tb_px_bound_300hz.v:**  
@@ -517,7 +517,7 @@ The table below states what is validated, what is not, and the evidence scope.
 | Prediction suppressed during reset | tb_reset_midstream_top, tb_formal_props P1 | DW=0, THRESH=4 bench params | |
 | Deterministic re-entry after reset | tb_reset_midstream_top, tb_replay_lockstep | Same bench params | Bit-exact phase 1/phase 2 comparison |
 | state_mem cleared after reset | tb_formal_props P3 | Bounded: holds for 50K cycles | Not unbounded proof |
-| No X/Z on outputs | tb_formal_props P2 | Bounded: 50K cycle LFSR | Not unbounded proof |
+| No X/Z on key control outputs | tb_formal_props P2 | Bounded: 50K cycle LFSR checks `pred_valid`, `conf_valid`, `aer_ack` | Not unbounded proof |
 | Clutter rejection (MAE ≤ baseline) | tb_cross_clutter, characterisation bench | Up to 1.6 noise events/scan tested | Rejection limit not characterized |
 | Tracker pool (NTRACK=4) | tb_multi_target_pool, tb_axi4s_pred_burst | Simulation only | Not characterized under mixed-velocity multi-target |
 | AXI4-S protocol compliance | tb_axi4s_pred_burst (ARM IHI 0051A case 5) | Simulation | No formal AXI compliance test tool |
@@ -586,7 +586,7 @@ This is the window during which events accumulate before the burst gate makes it
 
 ### 8.4 Output Interpretation
 
-`x_hat` and `y_hat` are PW-bit unsigned values in Q8.8 format. Integer pixel coordinate = `x_hat >> 8`. Sub-pixel fraction = `x_hat[7:0]`. The upper bits (`x_hat[PW-1:XW+8]`) should be zero when `pred_valid` fires; this is verified by property P4.
+`x_hat` and `y_hat` are PW-bit unsigned integer pixel coordinates, zero-extended above the configured coordinate width. The predictor's internal state is Q8.8, but fractional bits are not exported on the public ports. The upper bits (`x_hat[PW-1:XW]`, `y_hat[PW-1:YW]`) should be zero when `pred_valid` fires; this is verified by property P4.
 
 `conf` is a heuristic combination of event count and direction magnitude: `conf = min(255, ev_cnt*8 + vmag)`. It is not a calibrated probability. Higher values indicate higher recent event density and stronger directional signal.
 
