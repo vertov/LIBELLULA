@@ -1,0 +1,7 @@
+no_estmd: obj=1.733 IoU=0.838 ACC=0.907 Pd=0.895 prec=0.917 fc/w=0.75
+no_habituation: obj=1.652 IoU=0.811 ACC=0.864 Pd=0.841 prec=0.930 fc/w=0.61
+no_surround: obj=1.378 IoU=0.723 ACC=0.787 Pd=0.655 prec=0.900 fc/w=0.36
+no_activity_surround: obj=1.665 IoU=0.790 ACC=0.892 Pd=0.875 prec=0.873 fc/w=1.13
+no_static: obj=1.670 IoU=0.826 ACC=0.874 Pd=0.845 prec=0.938 fc/w=0.55
+no_tracker: obj=1.317 IoU=0.391 ACC=0.844 Pd=0.927 prec=0.421 fc/w=3.42
+density_only: obj=1.296 IoU=0.592 ACC=0.695 Pd=0.704 prec=0.801 fc/w=0.64

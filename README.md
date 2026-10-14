@@ -16,6 +16,27 @@ The implementation is Verilog-2001, vendor-neutral, and verified against a 23-re
 
 ---
 
+## Small-Target Detector Reference Model (`stmd/`, v24)
+
+`stmd/` holds a Python reference model that re-aims the LIBELLULA approach at the dragonfly's actual task: finding tiny moving targets. It processes events one at a time with the same building blocks as the RTL (activity filter, per-pixel timestamps, tracker pool, α-β update). On top of those it adds insect-style flicker habituation, centre-surround inhibition and an optional ESTMD polarity-correlation stage. It is software only; no RTL implements it yet.
+
+It was evaluated on the public EV-UAV dataset: real DAVIS346 recordings of tiny drones taken with a static camera. Parameters were tuned on the dataset's `val` split, and the `test` split was scored once, using a port of the dataset authors' own scoring code.
+
+| EV-UAV test (24 sequences) | IoU | Target-event recall | Per-window detection (Pd) |
+|---|---:|---:|---:|
+| `stmd` reference model (causal, 33 hand-set parameters) | 0.667 | 0.845 | 0.883 |
+| EV-SpSegNet, published (4.0 M-weight network, whole-clip, GPU) | 0.552 | 0.650 | 0.775 |
+
+- **Uncertainty.** The published IoU lies inside this model's 95 % interval over test sequences; the published recall and Pd lie outside it.
+- **Not like-for-like.** The two systems differ in causality, compute and training regime.
+- **What does the work.** Centre-surround inhibition and the tracker. The dragonfly-specific ESTMD correlation gave no measurable gain on this data.
+- **Open failures.** Sun glare (one test sequence) and dense low-light sensor noise (two sequences).
+- **Hardware estimate.** About 390 kB of state and about 75 state accesses per event at 346×260.
+
+Details, ablations and reproduction steps are in [`stmd/README.md`](stmd/README.md).
+
+---
+
 ### Design Philosophy: The Pure Motion Processor
 LIBELLULA is architected as a **Pure Motion Processor**. It is intentionally decoupled from platform-specific sensors and IMU data. By operating strictly on the normalized AER stream, the core remains a general-purpose, high-speed motion engine applicable to both fixed and mobile platforms. 
 
@@ -41,7 +62,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Architecture
 
 ```
-                      LIBELLULA Core v23 — 6-Stage Synchronous Pipeline
+                      LIBELLULA Core v24 — 6-Stage Synchronous Pipeline
  ──────────────────────────────────────────────────────────────────────────────────
   AER Input          LIF Layer           Delay Lattice       Motion Detect
   ──────────         ──────────          ─────────────       ─────────────
@@ -73,7 +94,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Repository Structure
 
 ```
-LIBELLULA_Core_v23/
+LIBELLULA_Core_v24/
 ├── rtl/
 │   ├── libellula_top.v          Top-level — core pipeline, all tuning parameters
 │   ├── libellula_soc.v          UAV SoC wrapper (AXI4-S in/out, 64-bit TDATA)
@@ -109,6 +130,7 @@ LIBELLULA_Core_v23/
 │
 ├── diagnostics_full/            Full characterisation logs and repair history
 ├── doc/                         Design notes, CLAIMS.md
+├── stmd/                        Python small-target detector reference model + EV-UAV evaluation (v24)
 └── build/                       Generated artifacts (created by make targets)
     ├── golden/                  Frozen stimulus and expected output vectors
     ├── eval_package/            Packaged evaluation artifacts

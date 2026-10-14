@@ -1,6 +1,6 @@
 // =============================================================================
 // axi4s_to_aer.v
-// AXI4-Stream input wrapper for LIBELLULA Core v23
+// AXI4-Stream input wrapper for LIBELLULA Core v24
 //
 // Bridges an AXI4-Stream slave interface to LIBELLULA's synchronous AER input
 // handshake (aer_req / aer_ack / aer_x / aer_y / aer_pol).  Sits between any

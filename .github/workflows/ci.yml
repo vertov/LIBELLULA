@@ -63,3 +63,8 @@ jobs:
       - name: Comparative benchmark harness (runs; results not gated)
         run: |
           python3 benchmarks/run_benchmarks.py 2>&1 | tee bench.log
+
+      - name: STMD reference model smoke test (synthetic, no dataset)
+        run: |
+          python3 -m pip install --quiet -r stmd/requirements.txt
+          python3 stmd/tests/smoke.py

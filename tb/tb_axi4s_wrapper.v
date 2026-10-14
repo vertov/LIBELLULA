@@ -1,6 +1,6 @@
 // =============================================================================
 // tb_axi4s_wrapper.v
-// Testbench for axi4s_pred_wrapper.v  —  LIBELLULA Core v23
+// Testbench for axi4s_pred_wrapper.v  —  LIBELLULA Core v24
 //
 // Test plan (7 cases):
 //   1. IDLE         : no pred_valid; verify TVALID stays low for 10 cycles
