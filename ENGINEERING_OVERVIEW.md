@@ -1,7 +1,7 @@
-# LIBELLULA Core v22 — Engineering Overview
+# LIBELLULA Core v23 — Engineering Overview
 
-**Revision:** v22 (repair-patched, post-diagnostics)  
-**Simulation toolchain:** Icarus Verilog 12.0 / vvp, Verilator 5.038  
+**Revision:** v23 (claims and verification-harness corrections; RTL behaviour unchanged from v22)  
+**Simulation toolchain:** Icarus Verilog 12.0 / vvp, Verilator 5.020 or later  
 **RTL language:** Verilog-2001 (`-g2012` flag required for some constructs)  
 **Audience:** FPGA/ASIC engineers, DVS/event-camera integrators, potential licensees
 
@@ -9,7 +9,7 @@
 
 ## 1. What This Document Is
 
-This document is a complete technical account of the LIBELLULA Core v22 RTL pipeline: its architecture, interface contracts, timing model, parameter space, test suite, and validated performance limits. It is based entirely on the contents of the repository — RTL source, testbench results, and diagnostic records — and distinguishes clearly between what has been measured in simulation and what has not.
+This document is a complete technical account of the LIBELLULA Core v23 RTL pipeline: its architecture, interface contracts, timing model, parameter space, test suite, and validated performance limits. It is based entirely on the contents of the repository — RTL source, testbench results, and diagnostic records — and distinguishes clearly between what has been measured in simulation and what has not.
 
 Claims are cited to specific testbenches or diagnostic records. Unconstrained claims are not made.
 
@@ -22,7 +22,7 @@ Claims are cited to specific testbenches or diagnostic records. Unconstrained cl
 LIBELLULA is a 6-stage synchronous pipeline that converts a raw AER event stream into pixel-coordinate predictions. Each stage is a separate RTL module instantiated in `rtl/libellula_top.v`. 
 
 ### 2.2 System Integration: The "Pure Motion Processor" Boundary
-The LIBELLULA Core v22 is architected as a **Pure Motion Processor**. It provides high-fidelity tracking of independent motion within an AER stream but does not internally compensate for the rotational or translational ego-motion of the sensor platform (e.g., UAV yaw/pitch). 
+The LIBELLULA Core v23 is architected as a **Pure Motion Processor**. It provides high-fidelity tracking of independent motion within an AER stream but does not internally compensate for the rotational or translational ego-motion of the sensor platform (e.g., UAV yaw/pitch). 
 
 **Integration Strategy:**
 - **Fixed/Gimbaled Platforms:** The core can ingest raw DVS output directly.
@@ -93,7 +93,7 @@ st_write    = spike ? 0 : st_clamped            // reset membrane on spike
 
 **Critical parameter history:** The original RTL shipped with LEAK_SHIFT=2 (75% retention per scan cycle). This gives a fixed point of 4 — permanently below THRESH=16 regardless of input rate. The pipeline produced zero predictions under any stimulus. Diagnosed in `diagnostics_full/00_EXEC_SUMMARY.md`, repaired by changing LEAK_SHIFT to 4. This is a fundamental architecture dependency, not a tuning note.
 
-**Scan period:** 2^AW cycles. Default AW=8: 256-cycle scan period. At 200 MHz this is 1.28 μs. The scan_addr counter must be driven externally; `libellula_top` exposes a `scan_addr[AW-1:0]` input. `libellula_soc` drives this from an internal free-running counter.
+**Scan period:** 2^AW cycles. Default AW=8: 256-cycle scan period. At 200 MHz this is 1.28 μs. With the default `LIF_SCAN_MODE=1` the scan counter is internal to `lif_tile_tmux` and the `scan_addr` input is ignored. With `LIF_SCAN_MODE=0` (legacy) the counter must be driven externally through `scan_addr[AW-1:0]`.
 
 **Reset behavior:** During `rst=1`, the state machine clears one neuron per clock cycle via the scan_addr pointer. Full clear requires 2^AW consecutive reset cycles. This is tested in `tb_formal_props.v` property P3.
 
@@ -218,7 +218,7 @@ Assignment logic (combinational, per `bg_v` pulse):
 | `aer_x` | XW | Event X coordinate |
 | `aer_y` | YW | Event Y coordinate |
 | `aer_pol` | 1 | Event polarity (0=OFF, 1=ON) |
-| `scan_addr` | AW | LIF scan address — must be a free-running counter, 0 to 2^AW-1 |
+| `scan_addr` | AW | LIF scan address. Ignored with default `LIF_SCAN_MODE=1`; with `LIF_SCAN_MODE=0` must be a free-running counter, 0 to 2^AW-1 |
 
 **Output ports:**
 
@@ -326,6 +326,8 @@ End-to-end latency from `aer_req` to `pred_valid`: **5 clock cycles**, measured 
 
 This measurement is under ideal conditions. The burst gate is bypassed; the LIF receives a pre-aligned event on a pre-charged neuron. This gives the minimum achievable latency for a cold-start-free, gate-open condition.
 
+`tb/tb_latency_default.v` (v23) measures the default-parameter case: one target moving 1 px per event, 667 cycles between events. Every emitted prediction appears 5 cycles after its event, but most events are integrated by the LIF/burst gate and produce no output. The first prediction follows the 32nd event (21 380 cycles from reset) and the core emits one prediction per ~17 events. The 5-cycle figure is the latency of an emitted prediction, not the interval between input events and outputs.
+
 ### 4.2 Accumulation Time (LIF)
 
 **Scan period:** 2^AW cycles. With AW=8 at 200 MHz: 256 cycles = 1.28 μs.
@@ -411,7 +413,9 @@ With NTRACK > 1, each tracker has its own OUTLIER_TH, applied to its own local p
 
 ### 5.7 Scan Address Contract
 
-`scan_addr[AW-1:0]` must be a free-running counter cycling through 0 to 2^AW-1. The LIF state machine uses `scan_addr` to determine which neuron to update each cycle. If `scan_addr` is held static or driven non-sequentially, the LIF will repeatedly update one neuron and never update others, producing incorrect behavior. `libellula_soc` handles this internally. Bare `libellula_top` instantiations must drive it externally.
+Applies only with `LIF_SCAN_MODE=0` (legacy). With the default `LIF_SCAN_MODE=1` the scan is generated internally and `scan_addr` is ignored.
+
+In legacy mode, `scan_addr[AW-1:0]` must be a free-running counter cycling through 0 to 2^AW-1. The LIF state machine uses `scan_addr` to determine which neuron to update each cycle. If `scan_addr` is held static or driven non-sequentially, the LIF will repeatedly update one neuron and never update others, producing incorrect behavior.
 
 ---
 
@@ -420,7 +424,7 @@ With NTRACK > 1, each tracker has its own OUTLIER_TH, applied to its own local p
 ### 6.1 Organization
 
 ```
-tb/              Core functional testbenches (34 distinct benches executed by make test)
+tb/              Core functional testbenches (38 distinct benches executed by make test)
 tb_hostile/      Failure-mode and stress testbenches (3 benches)
 tb/tb_formal_props.v    Bounded formal simulation (50,000 cycles)
 tb/tb_golden_gen.v      Golden vector generator
@@ -434,11 +438,11 @@ tb/tb_coverage_full.v   VCD dump for toggle coverage analysis
 
 | Category | Count | Result |
 |----------|-------|--------|
-| Claim metric benches (latency, px300, meps) — each run 3 times | 3 × 3 | PASS |
-| Unit tests (aer_rx, lif, delay_lattice, reichardt, burst_gate, ab_predictor, conf_gate, lif_liveness) | 8 | PASS |
-| Scenario tests (cv_linear, clutter, crossing, reversal, multi_target, idle, etc.) | 20 | PASS |
+| Claim metric benches (latency, latency-default, pxbound, meps) — each run 3 times | 4 × 3 | PASS |
+| Unit tests (aer_rx, lif, delay_lattice, reichardt, burst_gate, ab_predictor, conf_gate, activity_filter, ab_adaptive, …) | 10 | PASS |
+| Scenario tests (cv_linear, clutter, crossing, reversal, multi_target, accuracy, e2e, etc.) | 21 | PASS |
 | Hostile tests (mid-stream reset, stuck-REQ, random stress) | 3 | PASS |
-| **`make test` total (distinct benches)** | **34** | **ALL PASS** |
+| **`make test` total (distinct benches)** | **38** | **ALL PASS** |
 
 `make run-once` additionally runs power and diagnostic suites:
 
@@ -458,15 +462,18 @@ Every assertion-based bench produces `PASS` or `FAIL: <description>` via `$displ
 
 **tb_latency.v:**  
 Drives a single event, measures cycle count from `aer_req` assertion to `pred_valid` assertion. The bench uses latency-mode LIF/gate settings. Result: 5 cycles.  
-*Caveat:* Burst gate bypass means this is the minimum achievable latency. Normal operation with burst gate enabled delays first prediction until gate-open conditions are met.
+*Caveat:* Burst gate bypass means this is the minimum achievable latency. Normal operation with burst gate enabled delays first prediction until gate-open conditions are met. The bench fails above 5 cycles (v22 failed only above 12).
 
-**tb_px_bound_300hz.v:**  
-Constant-velocity linear motion at 300 Hz event rate (667 clock cycles between events at 200 MHz). Checks per-sample prediction error for each `pred_valid` output; asserts no sample exceeds ±2 px. Tests X-axis motion only.  
-*Caveat:* Per-sample, not RMS. Steady-state only (cold-start warmup period not assessed separately here). LIF and burst_gate parameters overridden to ensure consistent throughput.
+**tb_latency_default.v (v23):**  
+Default parameters. Asserts every emitted prediction is ≤ 5 cycles after its event (result: 5). Reports first-prediction delay (32 events, 21 380 cycles) and events per prediction (~17) as characterisation.
+
+**tb_px_bound.v (v23; replaces tb_px_bound_300hz.v):**  
+Constant-velocity X motion, 667 clock cycles between events at 200 MHz (3.3 μs, ~300 k events/s; v22 labelled this rate 300 Hz in error). Scores each prediction against the next event position and asserts ≤ ±2 px per sample and mean error below the echo baseline (the error of simply repeating the last event). Result at 1 px/event: mean 0.73 px, max 2 px. v22 scored against the current event position, which an echo would also pass.  
+*Caveat:* Per-sample, steady state (8 warm-up predictions discarded). LIF overridden to fire on first hit. `make pxbound-char` runs 2–3 px/event and 300 events/s configurations, which exceed the bound or fail the echo test (see §9).
 
 **tb_aer_throughput_1meps.v:**  
-Injects 2000 events at 1 Meps spacing. Counts `aer_ack` responses; asserts ACK==REQ. Result: REQ=2000, ACK=2000, PRED=7. Zero dropped events.  
-*Caveat:* Validates AER handshake integrity, not downstream processing rate. PRED=7 shows burst gate filtered most events. Event spacing is uniform (not burst); sustained burst behavior at 1 Meps not tested.
+Injects 2000 events at 1 Meps spacing. Counts `aer_ack` responses; asserts ACK==REQ. Result: REQ=2000, ACK=2000, PRED=2000 (latency-mode settings, gate transparent).  
+*Caveat:* `aer_ack` is combinational (`aer_req && !rst`), so ACK==REQ holds by construction and does not by itself demonstrate absence of drops; PRED=2000 shows each event reached the predictor at this rate in latency mode. Event spacing is uniform (not burst); sustained burst behavior at 1 Meps not tested.
 
 **tb_formal_props.v (make formal):**  
 Bounded simulation, 50,000 cycles, LFSR seed 0xDEADBEEF. Two identically-driven DUT instances. Five properties:
@@ -512,7 +519,8 @@ The table below states what is validated, what is not, and the evidence scope.
 | Claim | Evidence | Scope | Notes |
 |-------|----------|-------|-------|
 | 5-cycle pipeline latency | tb_latency, raw log | Burst gate bypassed | Minimum achievable. Normal operation has longer time-to-first-prediction |
-| ±2 px steady-state accuracy under constant velocity | tb_px_bound_300hz, characterisation bench | X-axis linear, constant velocity, post-warmup only | Cold-start lag up to 16 px for first 7 updates |
+| ±2 px one-step accuracy under constant velocity | tb_px_bound | X-axis linear, 1 px/event, ~300 k events/s, post-warmup only | Cold-start lag up to 16 px for first 7 updates; bound exceeded at 2–3 px/event; no gain over echo at 300 events/s |
+| 5-cycle latency under default parameters | tb_latency_default | Per emitted prediction | ~17 events per prediction; first prediction after 32 events |
 | 1 Meps, zero event drops | tb_aer_throughput_1meps, tb_meps_nodrop | AER handshake integrity | Uniform event spacing; burst behavior not tested |
 | Prediction suppressed during reset | tb_reset_midstream_top, tb_formal_props P1 | DW=0, THRESH=4 bench params | |
 | Deterministic re-entry after reset | tb_reset_midstream_top, tb_replay_lockstep | Same bench params | Bit-exact phase 1/phase 2 comparison |
@@ -522,7 +530,7 @@ The table below states what is validated, what is not, and the evidence scope.
 | Tracker pool (NTRACK=4) | tb_multi_target_pool, tb_axi4s_pred_burst | Simulation only | Not characterized under mixed-velocity multi-target |
 | AXI4-S protocol compliance | tb_axi4s_pred_burst (ARM IHI 0051A case 5) | Simulation | No formal AXI compliance test tool |
 | Toggle coverage 72% | coverage_report.py on VCD | 7 scenarios, iverilog | Not functional coverage or branch coverage |
-| Lint-clean | Verilator 5.038 -Wall | After suppression policy applied | PROCASSINIT suppressed globally; WIDTHTRUNC inline; WIDTHEXPAND fixed structurally |
+| Lint-clean | Verilator 5.020 -Wall (CI) | After suppression policy applied | PROCASSINIT suppressed where the Verilator version supports it; WIDTHTRUNC inline; WIDTHEXPAND fixed structurally |
 | Activity-proportional switching | tb_power_lo / tb_power_hi VCD toggle counts | Measurement only | **No automated assertion.** Ratio not enforced programmatically |
 | Velocity tracking up to 3.1 Mpx/s | Derived from characterisation + timing model | Mathematical bound | Not directly measured with a fast target bench |
 | UAV parameter profile | Application tuning rationale | None | **Not simulation-validated against a UAV scenario** |
@@ -611,7 +619,7 @@ build/eval_package/
 
 ---
 
-## 9. Known Limitations (Unresolved as of v22)
+## 9. Known Limitations (Unresolved as of v23)
 
 1. **Power bench has no automated assertion.** `tb_power_lo` and `tb_power_hi` produce VCD and print toggle counts but do not assert a minimum ratio. Activity-proportional switching is a structural property of the architecture, not an automatically checked simulation result.
 
@@ -619,7 +627,7 @@ build/eval_package/
 
 3. **Clutter rejection limit not characterized.** Tested up to 1 event per 64 cycles (1.6× signal rate per scan). The SNR boundary at which false positives begin is not known.
 
-4. **Direction reversal overshoot: 26 px peak.** After a target reversal, the predictor carries residual velocity from the previous direction. Peak overshoot measured at 26 px, decaying to 3 px within 3 tile transitions. Applications with tight error bounds during maneuvers should account for this.
+4. **Direction reversal overshoot: 16 px peak.** After a target reversal, the predictor carries residual velocity from the previous direction for one update. Peak overshoot measured at 16 px in `tb_reversal` (26 px before the reversal fix), converging to ≤ 1 px within 5 updates. Applications with tight error bounds during maneuvers should account for this.
 
 5. **Formal verification is bounded simulation, not model checking.** Properties P1–P5 hold over 50,000 cycles with an LFSR stimulus. Unbounded proofs (via SymbiYosys or equivalent) have not been run. The toolchain does not include yosys/sby.
 
@@ -632,6 +640,12 @@ build/eval_package/
 9. **UAV parameter profile is untested.** The parameter set documented in the README for 10–25 m/s intercept scenarios (LEAK_SHIFT=14, THRESH=4, HIT_WEIGHT=8192, BG_TH_OPEN=1, etc.) is a tuning rationale, not a validated configuration. No bench exists that simulates a UAV-scale target against a UAV-scale DVS event rate.
 
 10. **Tracker pool maximum target count not characterized.** NTRACK=4 is tested with 2 targets on separate tracks. Behavior at 3 or 4 simultaneous targets, mixed-velocity targets, or targets that cross ASSIGN_TH boundaries has not been characterized.
+
+11. **AER receiver is not a 4-phase handshake.** `aer_rx` is level-sensitive and combinational: each cycle with `aer_req` high is one event and `aer_ack` mirrors `aer_req`. A source must pulse REQ for one cycle per event. Sensors using true 4-phase AER need an edge-detecting front end; none is provided.
+
+12. **Prediction does not extrapolate at low event rates.** In `make pxbound-char`, at 300 events/s and 1 px/event the one-step error stays within ±2 px but its mean (2 px) is worse than repeating the last event (1 px). The predictor's velocity state does not carry across 3.3 ms gaps in this configuration. At ~300 k events/s, 2–3 px/event exceeds the ±2 px bound (max 3–4 px) while mean error remains below echo.
+
+13. **Default output cadence.** Under default parameters the core emits about one prediction per 17 input events for a single slow target (`tb_latency_default`), and the first prediction follows 32 events. Applications needing per-event output must use latency-mode LIF/gate settings and accept the loss of noise filtering.
 
 ---
 
@@ -665,7 +679,7 @@ doc/                  CLAIMS, AXI integration, traceability
 **Recommended verification sequence:**
 ```bash
 cd sim
-make test               # 34 distinct benches, all must pass
+make test               # 38 distinct benches, all must pass
 make axi                # 111 assertions, all must pass
 make lint               # zero Verilator warnings
 make formal             # 5 bounded properties, 50K cycles

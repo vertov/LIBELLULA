@@ -1,6 +1,6 @@
 // =============================================================================
 // libellula_soc.v
-// LIBELLULA Core v22  —  AXI4-Stream SoC Integration Wrapper
+// LIBELLULA Core v23  —  AXI4-Stream SoC Integration Wrapper
 //
 // Self-contained plug-in IP for AXI4-S SoC fabrics (Xilinx/AMD, Intel/Altera).
 // Packages the full LIBELLULA tracking pipeline with:
@@ -154,7 +154,7 @@ module libellula_soc #(
     );
 
     // -------------------------------------------------------------------------
-    // LIBELLULA tracking core (v22, UAV profile)
+    // LIBELLULA tracking core (UAV profile)
     // -------------------------------------------------------------------------
     wire           pred_valid;
     wire [PW-1:0]  x_hat, y_hat;

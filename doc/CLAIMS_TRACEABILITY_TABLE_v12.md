@@ -1,4 +1,4 @@
-# LIBELLULA Core v22 — Claims Traceability (Bench → Measurement Point → Assumptions)
+# LIBELLULA Core v23 — Claims Traceability (Bench → Measurement Point → Assumptions)
 
 This table ties each externally-stated technical claim to:
 - the specific RTL bench that supports it,
@@ -13,7 +13,8 @@ This table ties each externally-stated technical claim to:
 
 | Claim (external) | What is actually proven | Bench | Measurement points | Required assumptions / knobs | What is NOT proven |
 |---|---|---|---|---|---|
-| **”5-cycle fixed latency @ 200 MHz (25 ns)”** | Pipeline latency from the clock edge that samples `aer_req` to first assertion of `pred_valid` under a permissive “latency posture” | `tb/tb_latency.v` | Start: `posedge clk` when `aer_req==1` is sampled by `aer_rx`. Stop: first cycle where `pred_valid==1`. The bench prints `LATENCY_CYCLES` and fails if `>6` (actual measured: 5 cycles). | Bench forces: `dut.u_lif.LEAK_SHIFT=0`, `dut.u_lif.THRESH=1` (LIF fires immediately) and `dut.u_bg.COUNT_TH=0` (burst gate transparent). Also uses `DW=0` (minimal delay lattice). `scan_addr` is pre-held to hashed (x,y) so the correct LIF cell is addressed. | Any latency contribution from realistic LIF scanning schedules, non-transparent burst gating, deeper delay lattice (`DW>0`), multi-target interference, or backpressure (none exists) |
+| **”5-cycle fixed latency @ 200 MHz (25 ns)”** | Pipeline latency from the clock edge that samples `aer_req` to first assertion of `pred_valid` under a permissive “latency posture” | `tb/tb_latency.v` | Start: `posedge clk` when `aer_req==1` is sampled by `aer_rx`. Stop: first cycle where `pred_valid==1`. The bench prints `LATENCY_CYCLES` and fails if `>5` (actual measured: 5 cycles; v22 failed only above 12). | Bench forces: `dut.u_lif.LEAK_SHIFT=0`, `dut.u_lif.THRESH=1` (LIF fires immediately) and `dut.u_bg.COUNT_TH=0` (burst gate transparent). Also uses `DW=0` (minimal delay lattice). `scan_addr` is driven but ignored under the default `LIF_SCAN_MODE=1`. | Any latency contribution from realistic LIF scanning schedules, non-transparent burst gating, deeper delay lattice (`DW>0`), multi-target interference, or backpressure (none exists) |
+| **“5-cycle latency, default parameters”** (v23) | Every prediction emitted under default parameters appears ≤ 5 cycles after the newest event presented before it | `tb/tb_latency_default.v` | Same start/stop convention as `tb_latency`, applied to each `pred_valid`. Also reports events before the first prediction (32) and events per prediction (~17), not asserted. | Default LIF/burst-gate parameters, `DW=0`, single slow target (+1 px/event, 667-cycle spacing), single-cycle REQ pulses. | That every event produces a prediction (most do not under defaults); latency under multi-target load, DW>0, or bursty input |
 
 ---
 
@@ -21,7 +22,7 @@ This table ties each externally-stated technical claim to:
 
 | Claim (external) | What is actually proven | Bench | Measurement points | Required assumptions / knobs | What is NOT proven |
 |---|---|---|---|---|---|
-| **“±2 px at 300 Hz”** | Under a synthetic constant-velocity stimulus (+1 px per event in X), the reported `x_hat/y_hat` does not deviate by more than 2 (post-warmup) | `tb/tb_px_bound_300hz.v` | Compares `x_hat/y_hat` against current “truth” after each event; counts violations where |Δx|>2 or |Δy|>2 and fails if any violations remain after warmup removal. | Same permissive posture as latency bench: LIF fires on first hit, burst gate transparent, `DW=0`, `scan_addr` pre-held to hashed (x,y). Event cadence is `PERIOD_CYC=667` cycles at 200 MHz (~300 Hz). | Error bounds under accelerations, clutter, occlusion, scan-address mismatch, realistic LIF leak/threshold, realistic burst gating, non-minimal delay lattice, or real sensor noise models |
+| **“±2 px one-step error, constant velocity”** (v23; replaces “±2 px at 300 Hz”) | Under a synthetic constant-velocity stimulus (+1 px per event in X), each post-warmup `x_hat` is within 2 px of the NEXT event position, and mean error is below the echo baseline (1 px). Measured: mean 0.73 px, max 2 px | `tb/tb_px_bound.v` | Compares `x_hat/y_hat` with the next true position after each event; fails on any violation after 8 warm-up predictions, on any event without a prediction, or if mean error ≥ echo baseline. | LIF fires on first hit, `DW=0`, single-cycle REQ pulses. Event cadence `PERIOD_CYC=667` at 200 MHz = 3.3 μs (~300 k events/s). v22 described this cadence as ~300 Hz in error and scored against the current position. | Error at 2–3 px/event (bound exceeded, max 3–4 px) or at 300 events/s (within bound but no better than echo) — see `make pxbound-char`; accelerations, clutter, realistic LIF/gate settings, real sensor noise |
 
 ---
 

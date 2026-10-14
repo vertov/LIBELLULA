@@ -4,7 +4,11 @@
 // Sends one event and measures clock cycles from aer_req to pred_valid.
 // Requires COUNT_TH=0 (transparent burst gate) so ds_v #1 propagates
 // immediately without needing TH_OPEN=2 accumulation.
-// Specification: <= 12 cycles at 200 MHz (7-stage pipeline + margin).
+// Runs in "latency mode" (LIF fire-on-first-hit, no leak, gate transparent),
+// so it measures pipeline traversal for an event that is passed through.
+// Under default parameters most events are filtered by the LIF/burst gate;
+// see tb_latency_default for that case.
+// Specification: <= 5 cycles at 200 MHz (v22 bench only failed above 12).
 module tb_latency;
   localparam integer T_NS = 5; // 200 MHz -> 5 ns/cycle
   localparam XW=10, YW=10, AW=8, DW=0, PW=16; // DW=0: minimal delay
@@ -77,8 +81,8 @@ module tb_latency;
 
     $display("LATENCY_CYCLES=%0d", cycles);
     $display("LATENCY_NS=%0d", cycles*T_NS);
-    if (cycles > 12) begin
-      $display("FAIL: Latency %0d cycles exceeds 12-cycle specification", cycles);
+    if (cycles > 5) begin
+      $display("FAIL: Latency %0d cycles exceeds 5-cycle specification", cycles);
       $finish_and_return(1);
     end
     $display("PASS");

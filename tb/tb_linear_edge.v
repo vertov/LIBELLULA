@@ -47,7 +47,7 @@ module tb_linear_edge;
         hash = {x[XW-1:XW-HX], y[YW-1:YW-HY]};
     endfunction
 
-    // AER request with proper scan pre-hold (matching tb_px_bound_300hz)
+    // AER request with proper scan pre-hold (matching tb_px_bound)
     task send_event;
         begin
             scan = hash(aer_x, aer_y);

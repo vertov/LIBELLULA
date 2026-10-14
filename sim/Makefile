@@ -28,7 +28,8 @@ RTL_AXI = \
 
 # === claim metric benches ===
 TB_LAT   = ../tb/tb_latency.v
-TB_PX300 = ../tb/tb_px_bound_300hz.v
+TB_LATD  = ../tb/tb_latency_default.v
+TB_PXB   = ../tb/tb_px_bound.v
 TB_MEPS  = ../tb/tb_aer_throughput_1meps.v
 TB_POWLO = ../tb/tb_power_lo.v
 TB_POWHI = ../tb/tb_power_hi.v
@@ -79,6 +80,10 @@ TB_RSTMS = ../tb_hostile/tb_reset_midstream_top.v
 TB_AERST = ../tb_hostile/tb_aer_req_stuck_high.v
 TB_RAND  = ../tb_hostile/tb_random_stress_top.v
 
+# === characterisation sweeps (report tables; not CI gates) ===
+TB_CLUTSW  = ../tb/tb_clutter.v
+TB_VELRNG  = ../tb/tb_velocity_range.v
+
 # === benchmark harness ===
 TB_BENCH = ../tb/tb_benchmark_driver.v
 TB_PREDGOLD = ../tb/tb_pred_valid_golden.v
@@ -119,12 +124,33 @@ build/tb_latency: check-tools $(TB_LAT) $(RTL) | init
 latency: build/tb_latency
 	$(VVP) build/tb_latency
 
-# ---------- claim: 300Hz ±2px ----------
-build/tb_px_bound_300hz: check-tools $(TB_PX300) $(RTL) | init
-	$(call COMPILE,$@,$(TB_PX300),build/tb_px_bound_300hz_iverilog.log)
+# Default parameters: per-prediction latency (asserted <= 5) plus time to first
+# prediction and events per prediction (reported, not asserted).
+build/tb_latency_default: check-tools $(TB_LATD) $(RTL) | init
+	$(call COMPILE,$@,$(TB_LATD),build/tb_latency_default_iverilog.log)
 
-px300: build/tb_px_bound_300hz
-	$(VVP) build/tb_px_bound_300hz
+latency-default: build/tb_latency_default
+	$(VVP) build/tb_latency_default
+
+# ---------- claim: ±2 px one-step prediction, constant velocity ----------
+# Default: 667 cycles between events at 200 MHz (~300 k events/s), 1 px/event.
+# (v22 called this target `px300` and labelled the rate 300 Hz; it was not.)
+build/tb_px_bound: check-tools $(TB_PXB) $(RTL) | init
+	$(call COMPILE,$@,$(TB_PXB),build/tb_px_bound_iverilog.log)
+
+pxbound: build/tb_px_bound
+	$(VVP) build/tb_px_bound
+
+# Characterisation (not a gate; several configurations are expected to exceed
+# the ±2 px bound). The 300 events/s runs take ~3 min each in Icarus.
+#   2 and 3 px/event at ~300 k events/s, then 1 and 3 px/event at 300 events/s.
+pxbound-char: check-tools $(TB_PXB) $(RTL) | init
+	@for cfg in "667 2 200" "667 3 200" "666667 1 40" "666667 3 40"; do \
+	  set -- $$cfg; \
+	  $(IVERILOG) -g2012 -I ../tb -DPERIOD_CYC=$$1 -DSTEP_PX=$$2 -DN_EVENTS=$$3 \
+	    -o build/tb_px_bound_char $(RTL) $(TB_PXB) || exit 1; \
+	  $(VVP) -n build/tb_px_bound_char | grep -E '^(PXBOUND|PASS|FAIL)'; \
+	done
 
 # ---------- claim: 1 Meps throughput ----------
 build/tb_aer_throughput_1meps: check-tools $(TB_MEPS) $(RTL) | init
@@ -441,14 +467,15 @@ hostile: resetmid aerstuck randstress
 	@echo "HOSTILE TESTS PASSED"
 
 # ---------- run all benches (single pass) ----------
-run-once: latency px300 meps power units scenarios hostile diagnostic
+run-once: latency latency-default pxbound meps power units scenarios hostile diagnostic
 	@echo "ALL TESTBENCHES PASSED (single pass)"
 
 # ---------- test: core x3 + full suite once ----------
 test:
 	@for i in 1 2 3; do \
 		echo "=== RUN $$i/3: latency ===";   $(MAKE) -s latency   || exit 1; \
-		echo "=== RUN $$i/3: px300 ===";     $(MAKE) -s px300     || exit 1; \
+		echo "=== RUN $$i/3: latency-default ==="; $(MAKE) -s latency-default || exit 1; \
+		echo "=== RUN $$i/3: pxbound ===";   $(MAKE) -s pxbound   || exit 1; \
 		echo "=== RUN $$i/3: meps ===";      $(MAKE) -s meps      || exit 1; \
 	done; \
 	echo "=== RUN: units ===";    $(MAKE) -s units    || exit 1; \
@@ -458,7 +485,7 @@ test:
 
 # ---------- report ----------
 report: run-once
-	@echo "LIBELLULA v22: SIM REPORT" > build/REPORT.txt
+	@echo "LIBELLULA v23: SIM REPORT" > build/REPORT.txt
 	@date >> build/REPORT.txt
 	@echo "" >> build/REPORT.txt
 	@echo "Core benches (make run-once): 3 claim (x3) + 8 units + 20 scenarios + 3 hostile + 2 power + 2 diagnostic = 38 distinct benches" >> build/REPORT.txt
@@ -671,13 +698,36 @@ VERILATOR ?= verilator
 #   reset-init style used throughout (synthesises correctly on FPGA/ASIC).
 # UNUSED/UNDRIVEN suppressed: diagnostic counter signals (#ifdef LIBELLULA_DIAG)
 #   are deliberately left undriven in the default build.
+# PROCASSINIT exists only in newer Verilator releases; older ones (e.g. 5.020,
+# the Ubuntu 24.04 package used by CI) reject an unknown -Wno- flag outright.
+# Probe for support instead of hard-coding the flag.
+VL_PROCASSINIT = $(shell mkdir -p build && echo 'module vprobe; endmodule' > build/.vprobe.v && \
+  $(VERILATOR) --lint-only -Wno-PROCASSINIT build/.vprobe.v >/dev/null 2>&1 && echo -Wno-PROCASSINIT)
+
 lint: | init
-	@echo "=== LINT: Verilator --lint-only ==="
+	@echo "=== LINT: Verilator --lint-only ($$($(VERILATOR) --version 2>/dev/null)) ==="
 	@$(VERILATOR) --lint-only -Wall \
-	  -Wno-DECLFILENAME -Wno-UNUSED -Wno-UNDRIVEN -Wno-PROCASSINIT \
+	  -Wno-DECLFILENAME -Wno-UNUSED -Wno-UNDRIVEN $(VL_PROCASSINIT) \
 	  $(RTL) --top-module libellula_top \
 	  2> build/lint.log && echo "LINT PASS: zero warnings" \
 	  || (echo "LINT FAIL — see build/lint.log:" && cat build/lint.log && exit 1)
+
+# ---------- characterisation sweeps ----------
+# Clutter-rate and velocity sweeps that print result tables. Previously in
+# tb/ but not wired to any target (v22). Not part of CI.
+build/tb_clutter: check-tools $(TB_CLUTSW) $(RTL) | init
+	$(call COMPILE,$@,$(TB_CLUTSW),build/tb_clutter_iverilog.log)
+
+clutter-sweep: build/tb_clutter
+	$(VVP) -n build/tb_clutter | grep -E '^CLT_'
+
+build/tb_velocity_range: check-tools $(TB_VELRNG) $(RTL) | init
+	$(call COMPILE,$@,$(TB_VELRNG),build/tb_velocity_range_iverilog.log)
+
+velocity-sweep: build/tb_velocity_range
+	$(VVP) -n build/tb_velocity_range | grep -E '^VEL_'
+
+characterize: clutter-sweep velocity-sweep pxbound-char
 
 # ---------- formal ---------------------------------------------------------
 # Bounded-simulation formal properties check (50 000 cycles, LFSR stimulus).
@@ -739,7 +789,7 @@ req_trace: | init
 toolchain_manifest: | init
 	@echo "=== TOOLCHAIN MANIFEST ==="
 	@{ \
-	  echo "LIBELLULA Core v22 — Toolchain Manifest"; \
+	  echo "LIBELLULA Core v23 — Toolchain Manifest"; \
 	  echo "Generated : $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	  echo ""; \
 	  echo "## Simulator"; \
@@ -788,7 +838,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	@cp build/lint.log                          build/eval_package/lint_clean.log 2>/dev/null || true
 	@cp build/sha256.txt                        build/eval_package/SHA256SUMS.txt 2>/dev/null || true
 	@{ \
-	  echo "# LIBELLULA Core v22 — Interface & Latency Specification"; \
+	  echo "# LIBELLULA Core v23 — Interface & Latency Specification"; \
 	  echo ""; \
 	  echo "## Top-level ports (libellula_top)"; \
 	  echo "| Port | Dir | Width | Description |"; \
@@ -820,7 +870,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  - No overflow/wraparound on x_hat/y_hat (ab_predictor clamps to [0, 2^XW-1])."; \
 	} > build/eval_package/interface_spec.md
 	@{ \
-	  echo "# LIBELLULA Core v22 — Latency Specification"; \
+	  echo "# LIBELLULA Core v23 — Latency Specification"; \
 	  echo ""; \
 	  echo "## Claim"; \
 	  echo "  Pipeline latency = 5 clock cycles, fixed, independent of scene."; \
@@ -848,7 +898,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  Expected stdout: LATENCY_CYCLES=5 and PASS."; \
 	} > build/eval_package/latency_spec.md
 	@{ \
-	  echo "# LIBELLULA Core v22 — Known Limits"; \
+	  echo "# LIBELLULA Core v23 — Known Limits"; \
 	  echo ""; \
 	  echo "Sourced from README §Current Status and Limitations."; \
 	  echo ""; \
@@ -880,7 +930,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  count under realistic clutter has not been characterised."; \
 	} > build/eval_package/known_limits.md
 	@{ \
-	  echo "# LIBELLULA Core v22 — Evaluation Package"; \
+	  echo "# LIBELLULA Core v23 — Evaluation Package"; \
 	  echo ""; \
 	  echo "Entry point for RTL evaluators."; \
 	  echo ""; \
@@ -933,7 +983,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 sha256: | init
 	@echo "=== SHA-256 CHECKSUMS ==="
 	@{ \
-	  echo "# LIBELLULA Core v22 — SHA-256 Checksums"; \
+	  echo "# LIBELLULA Core v23 — SHA-256 Checksums"; \
 	  echo "# Generated: $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	  echo ""; \
 	  echo "## RTL sources"; \
@@ -964,9 +1014,9 @@ sha256: | init
 tag_release: sha256 toolchain_manifest | init
 	@echo "=== TAG RELEASE ==="
 	@RTL_HASH=$$(shasum -a 256 $(RTL) | shasum -a 256 | awk '{print $$1}'); \
-	 TAG="v22-release-$$(date -u '+%Y%m%d-%H%M')"; \
+	 TAG="v23-release-$$(date -u '+%Y%m%d-%H%M')"; \
 	 { \
-	   echo "LIBELLULA Core v22 — Release Tag"; \
+	   echo "LIBELLULA Core v23 — Release Tag"; \
 	   echo "Tag      : $$TAG"; \
 	   echo "Date     : $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	   echo "RTL hash : $$RTL_HASH  (SHA-256 of all RTL sources combined)"; \
@@ -982,7 +1032,7 @@ tag_release: sha256 toolchain_manifest | init
 clean:
 	@rm -rf build
 
-.PHONY: all check-tools init latency px300 meps power units scenarios \
+.PHONY: all check-tools init latency latency-default pxbound pxbound-char clutter-sweep velocity-sweep characterize meps power units scenarios \
         resetmid aerstuck randstress hostile run-once test report clean full-diagnostic \
         lif_liveness accuracy e2e_motion naturalistic reversal aw_sweep multi_target_pool \
         tb_ingestion_liveness tb_canonical_motion_audit diagnostic \

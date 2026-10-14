@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-// Golden vector generator for LIBELLULA Core v22.
+// Golden vector generator for LIBELLULA Core v23.
 //
 // Runs the canonical constant-velocity scenario and writes:
 //   build/golden/stimulus.evt  — one line per event: x y pol (decimal)

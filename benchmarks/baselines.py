@@ -358,52 +358,52 @@ class EventMotionBaseline(TrackerBase):
 
 
 class TinyLearnedPredictor(TrackerBase):
-    """Online linear regressor trained on-the-fly."""
+    """Online linear regressor trained on-the-fly (normalised LMS).
+
+    Predicts the per-cycle displacement from [1, vx, vy]. v22 regressed on
+    raw pixel coordinates with a fixed learning rate, which diverged to NaN
+    within a few hundred events; NLMS on velocity features is stable.
+    """
 
     name = "tiny_learned"
     cost_per_event = 1.5
 
-    def __init__(self, dt_cycles: float = 1.0, learning_rate: float = 0.05):
+    def __init__(self, dt_cycles: float = 1.0, learning_rate: float = 0.1):
         super().__init__(dt_cycles)
         self.lr = learning_rate
-        # Feature vector: [1, x, y, vx, vy]
-        self.weights_x = [0.0, 1.0, 0.0, 0.1, 0.0]
-        self.weights_y = [0.0, 0.0, 1.0, 0.0, 0.1]
-        self.last_position = (0.0, 0.0)
-        self.velocity = (0.0, 0.0)
+        self.reset()
         self.latency_cycles = 6
 
     def reset(self):
         super().reset()
-        self.weights_x = [0.0, 1.0, 0.0, 0.1, 0.0]
-        self.weights_y = [0.0, 0.0, 1.0, 0.0, 0.1]
+        # Feature vector: [1, vx, vy]; start as a constant-velocity predictor.
+        self.weights_x = [0.0, 1.0, 0.0]
+        self.weights_y = [0.0, 0.0, 1.0]
+        self.last_position = (0.0, 0.0)
+        self.velocity = (0.0, 0.0)
+        self.have_position = False
 
     def _features(self) -> List[float]:
-        return [1.0, self.last_position[0], self.last_position[1], self.velocity[0], self.velocity[1]]
-
-    def _predict_delta(self, weights: List[float]) -> float:
-        feats = self._features()
-        return sum(w * f for w, f in zip(weights, feats))
+        return [1.0, self.velocity[0], self.velocity[1]]
 
     def handle(self, cycle: int, events: Sequence[ScenarioEvent]) -> None:
         self._account_cost(len(events), weight=1.2)
         if events:
             centroid_x = sum(e.x for e in events) / len(events)
             centroid_y = sum(e.y for e in events) / len(events)
-            meas_vx = centroid_x - self.last_position[0]
-            meas_vy = centroid_y - self.last_position[1]
-            target_dx = centroid_x - self.last_position[0]
-            target_dy = centroid_y - self.last_position[1]
-            feats = self._features()
-            pred_dx = sum(w * f for w, f in zip(self.weights_x, feats))
-            pred_dy = sum(w * f for w, f in zip(self.weights_y, feats))
-            err_x = target_dx - pred_dx
-            err_y = target_dy - pred_dy
-            for i in range(len(self.weights_x)):
-                self.weights_x[i] += self.lr * err_x * feats[i]
-                self.weights_y[i] += self.lr * err_y * feats[i]
-            self.velocity = (0.5 * self.velocity[0] + 0.5 * meas_vx, 0.5 * self.velocity[1] + 0.5 * meas_vy)
+            if self.have_position:
+                meas_vx = centroid_x - self.last_position[0]
+                meas_vy = centroid_y - self.last_position[1]
+                feats = self._features()
+                norm = 1.0 + sum(f * f for f in feats)
+                err_x = meas_vx - sum(w * f for w, f in zip(self.weights_x, feats))
+                err_y = meas_vy - sum(w * f for w, f in zip(self.weights_y, feats))
+                for i in range(len(feats)):
+                    self.weights_x[i] += self.lr * err_x * feats[i] / norm
+                    self.weights_y[i] += self.lr * err_y * feats[i] / norm
+                self.velocity = (0.5 * self.velocity[0] + 0.5 * meas_vx, 0.5 * self.velocity[1] + 0.5 * meas_vy)
             self.last_position = (centroid_x, centroid_y)
+            self.have_position = True
             self.locked_flag = True
         else:
             self.velocity = (self.velocity[0] * 0.9, self.velocity[1] * 0.9)

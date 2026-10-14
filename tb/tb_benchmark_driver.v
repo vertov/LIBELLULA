@@ -8,7 +8,6 @@ module tb_benchmark_driver;
     localparam AW = 8;
     localparam DW = 4;
     localparam PW = 16;
-    localparam FIFO_DEPTH = 65536;
 
     reg clk = 0;
     reg rst = 1;
@@ -77,39 +76,24 @@ module tb_benchmark_driver;
     reg feed_done = 0;
     integer events_processed = 0;
     integer last_event_cycle_sent = 0;
-    integer fifo_head = 0;
-    integer fifo_tail = 0;
-    integer fifo_count = 0;
-    integer fifo_sim [0:FIFO_DEPTH-1];
-    integer fifo_scen [0:FIFO_DEPTH-1];
 
-    task automatic fifo_push(input integer sim_cyc, input integer scen_cyc);
-        begin
-            if (fifo_count >= FIFO_DEPTH) begin
-                $fatal(1, "Event FIFO overflow");
-            end
-            fifo_sim[fifo_tail] = sim_cyc;
-            fifo_scen[fifo_tail] = scen_cyc;
-            fifo_tail = (fifo_tail + 1) % FIFO_DEPTH;
-            fifo_count = fifo_count + 1;
-        end
-    endtask
-
-    task automatic fifo_pop(output integer sim_cyc, output integer scen_cyc, output integer valid);
-        begin
-            if (fifo_count == 0) begin
-                valid = 0;
-                sim_cyc = 0;
-                scen_cyc = 0;
-            end else begin
-                sim_cyc = fifo_sim[fifo_head];
-                scen_cyc = fifo_scen[fifo_head];
-                fifo_head = (fifo_head + 1) % FIFO_DEPTH;
-                fifo_count = fifo_count - 1;
-                valid = 1;
-            end
-        end
-    endtask
+    // Prediction-to-event pairing (v23).
+    // The core does NOT emit one prediction per input event: under default
+    // parameters the burst gate passes only a fraction of events to the
+    // predictor. Each prediction is therefore labelled with the MOST RECENT
+    // event presented to the core before pred_valid, i.e. the newest
+    // information the core could have used. latency_cycles is measured from
+    // that event. (v22 and earlier popped a FIFO, pairing prediction k with
+    // event k, which mislabelled every prediction after the first.)
+    // An event presented fewer than PIPE_LAT cycles before pred_valid cannot
+    // have produced it (fixed pipeline depth; 6 in this driver's counting
+    // convention = tb_latency's 5 cycles + the negedge launch offset), so the
+    // pairing skips such events using a short history ring.
+    localparam integer PIPE_LAT = 6;
+    localparam integer HIST = 16;
+    integer hist_sim  [0:HIST-1];
+    integer hist_scen [0:HIST-1];
+    integer hist_n = 0;
 
     initial begin
         if (!$value$plusargs("EVENTS=%s", events_path)) begin
@@ -171,7 +155,9 @@ module tb_benchmark_driver;
                 aer_pol <= event_pol[0];
                 aer_req <= 1'b1;
                 last_event_cycle_sent = event_cycle;
-                fifo_push(event_cycle, scenario_cycle);
+                hist_sim[hist_n % HIST]  = sim_cycle;
+                hist_scen[hist_n % HIST] = scenario_cycle;
+                hist_n = hist_n + 1;
                 @(negedge clk);
                 aer_req <= 1'b0;
                 events_processed = events_processed + 1;
@@ -186,11 +172,19 @@ module tb_benchmark_driver;
             integer evt_sim;
             integer evt_scen;
             integer latency;
-            integer valid;
-            fifo_pop(evt_sim, evt_scen, valid);
-            if (!valid) begin
-                evt_sim = sim_cycle;
-                evt_scen = sim_cycle;
+            integer k;
+            integer found;
+            found = 0;
+            evt_sim = sim_cycle;
+            evt_scen = 0;
+            for (k = 1; k <= HIST && !found; k = k + 1) begin
+                if (hist_n - k >= 0) begin
+                    if (sim_cycle - hist_sim[(hist_n - k) % HIST] >= PIPE_LAT) begin
+                        evt_sim  = hist_sim[(hist_n - k) % HIST];
+                        evt_scen = hist_scen[(hist_n - k) % HIST];
+                        found = 1;
+                    end
+                end
             end
             latency = sim_cycle - evt_sim;
             $fwrite(pred_fd, "%0d,%0d,%0d,%0d,%0d,%0d\n",

@@ -192,7 +192,7 @@ module ab_predictor #(
     // injects velocity every update, which the alpha correction largely
     // cancels in the output at full gain; attenuating alpha while the hint
     // is active re-exposes that bias as steady output offset (measured:
-    // +4 px at 1 px/update drift in tb_px_bound_300hz). When the hint is
+    // +4 px at 1 px/update drift in tb_px_bound). When the hint is
     // below the noise floor there is no bias to expose and gain reduction
     // is pure jitter win.
     wire hint_quiet = (dir_x <= REVERSAL_TH_POS) && (dir_x >= REVERSAL_TH_NEG)

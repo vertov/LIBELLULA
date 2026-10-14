@@ -74,8 +74,8 @@ module libellula_top #(
     parameter ADAPT_GAIN = 0,
     // Lock-gated measurement smoothing (/4 EMA while locked, auto-bypass on
     // manoeuvre). Default OFF: the EMA adds (2^2-1) * v px of steady lag
-    // under sustained motion, which violates the +/-2 px @300 Hz claim at
-    // 1 px/update drift (tb_px_bound_300hz). Enable only for quasi-static
+    // under sustained motion, which violates the +/-2 px one-step bound at
+    // 1 px/update drift (tb_px_bound). Enable only for quasi-static
     // or hover scenarios. 0 = raw measurements (legacy).
     parameter MEAS_FILT = 0,
     // Background-activity filter in front of the LIF: drop events with no
