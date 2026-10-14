@@ -13,7 +13,7 @@ module tb_prediction_error;
     localparam T_NS = 5;  // 200 MHz
     localparam XW = 10, YW = 10, AW = 8, DW = 0, PW = 16;
     localparam NUM_EVENTS = 100;  // Events for measurement
-    localparam CYCLES_PER_EVENT = 667;  // 300 Hz event rate
+    localparam CYCLES_PER_EVENT = 667;  // 3.3 us at 200 MHz (~300 k events/s)
 
     reg clk = 0, rst = 1;
     always #(T_NS/2) clk = ~clk;
@@ -160,7 +160,7 @@ module tb_prediction_error;
             // Send event and measure prediction
             send_event_wait_pred();
 
-            // Inter-event delay (300 Hz rate)
+            // Inter-event delay (~300 k events/s)
             for (c = 0; c < CYCLES_PER_EVENT; c = c + 1) @(negedge clk);
 
             // Progress indicator

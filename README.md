@@ -6,11 +6,13 @@ Synthesizable RTL pipeline for real-time target tracking on Address-Event Repres
 
 ## What It Is
 
-LIBELLULA is a single-clock synchronous pipeline that converts a raw AER event stream into pixel-coordinate predictions with 5-cycle latency at 200 MHz. It requires no frame accumulation and no CPU in the critical path.
+LIBELLULA is a single-clock synchronous pipeline that converts a raw AER event stream into pixel-coordinate predictions. A prediction leaves the pipeline 5 cycles (25 ns at 200 MHz) after the event that produced it. It requires no frame accumulation and no CPU in the critical path.
+
+Not every event produces a prediction. Under default parameters the LIF tiles integrate several hits and the burst gate must open before an event reaches the predictor: in `tb_latency_default` (one target, 1 px per event) the first prediction follows the 32nd event and the core emits one prediction per ~17 events thereafter. Output cadence is therefore set by scene event density and the LIF/gate parameters, not by the clock.
 
 The architecture is derived from the dragonfly small-target motion detector (STMD) circuit: leaky integrate-and-fire (LIF) neurons tile the sensor plane, a retinotopic delay lattice measures directional correlation between adjacent tiles, and an α-β predictor produces sub-pixel position estimates. A configurable N-target tracker pool extends the design to multi-target scenarios.
 
-The implementation is Verilog-2001, vendor-neutral, and verified against a 23-requirement traceability matrix with a 34-bench core simulation suite plus a 4-bench AXI4-Stream layer (111 assertions).
+The implementation is Verilog-2001, vendor-neutral, and verified against a 23-requirement traceability matrix with a 38-bench core simulation suite (4 claim, 10 unit, 21 scenario, 3 hostile) plus a 4-bench AXI4-Stream layer (111 assertions). All verification is simulation with synthetic stimulus.
 
 ---
 
@@ -24,7 +26,7 @@ For UAV applications involving significant ego-motion, it is recommended to impl
 
 Standard frame-based vision pipelines impose a floor latency equal to the frame period (typically 1–33 ms). For high-speed intercept, collision avoidance, or sub-millisecond servo loops, that floor is a fundamental constraint, not an implementation detail.
 
-LIBELLULA operates directly on the AER protocol that DVS sensors (Davis240, DAVIS346, Prophesee Metavision, Samsung DVS, IMX636) natively produce. There is no frame buffer, no debayer step, and no resampling. An event enters the pipeline and a prediction exits in 5 clock cycles — 25 ns at 200 MHz.
+LIBELLULA operates directly on the AER protocol that DVS sensors (Davis240, DAVIS346, Prophesee Metavision, Samsung DVS, IMX636) natively produce. There is no frame buffer, no debayer step, and no resampling. When an event is passed by the LIF and burst-gate stages, the resulting prediction exits 5 clock cycles later (25 ns at 200 MHz); events that are integrated rather than passed produce no output.
 
 What the pipeline adds beyond raw event relay:
 - Spatial grouping into configurable tile sizes via time-multiplexed LIF
@@ -39,7 +41,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Architecture
 
 ```
-                      LIBELLULA Core v22 — 6-Stage Synchronous Pipeline
+                      LIBELLULA Core v23 — 6-Stage Synchronous Pipeline
  ──────────────────────────────────────────────────────────────────────────────────
   AER Input          LIF Layer           Delay Lattice       Motion Detect
   ──────────         ──────────          ─────────────       ─────────────
@@ -71,7 +73,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Repository Structure
 
 ```
-LIBELLULA_Core_v22/
+LIBELLULA_Core_v23/
 ├── rtl/
 │   ├── libellula_top.v          Top-level — core pipeline, all tuning parameters
 │   ├── libellula_soc.v          UAV SoC wrapper (AXI4-S in/out, 64-bit TDATA)
@@ -123,7 +125,7 @@ LIBELLULA_Core_v22/
 ### Prerequisites
 
 - **Icarus Verilog** ≥ 12.0 (`iverilog`, `vvp`)
-- **Verilator** ≥ 5.038 (for `make lint` only)
+- **Verilator** ≥ 5.020 (for `make lint` only; `-Wno-PROCASSINIT` is applied only where the installed version supports it)
 - **Python** ≥ 3.8 (for `make coverage_report`, `make req_trace`)
 - `shasum` / `sha256sum` (for `make sha256`, `make toolchain_manifest`)
 
@@ -134,16 +136,17 @@ cd sim
 ### Core simulation
 
 ```bash
-make test               # 34 core benches — run this first
+make test               # 38 core benches (claim benches x3) — run this first
 make axi                # 111 AXI-layer assertion benches
-make scenarios          # 20 scenario benches (verbose subset of make test)
-make units              # 8 unit-level benches
+make scenarios          # 21 scenario benches (verbose subset of make test)
+make units              # 10 unit-level benches
+make characterize       # Clutter / velocity sweeps and ±2 px bound characterisation (not gates; slow)
 ```
 
 Expected output:
 ```
 make test   →  ALL TESTS PASSED x3 core + full suite + hostile
-               (3 claim benches x3 + 8 units + 20 scenarios + 3 hostile = 34 distinct benches)
+               (4 claim benches x3 + 10 units + 21 scenarios + 3 hostile = 38 distinct benches)
 make axi    →  AXI TESTS PASSED
                (tb_axi4s_to_aer 49/0 | tb_axi4s_wrapper 27/0 | tb_axi4s_pred_burst 33/0 | tb_axi4s_integration 0 mismatches)
 ```
@@ -181,9 +184,10 @@ All claims below are backed by simulation evidence in the test suite. Scope note
 
 | Claim | Bench | Result |
 |-------|-------|--------|
-| Minimum pipeline latency ≤ 5 cycles at 200 MHz | `tb_latency` | LATENCY_CYCLES=5 with latency-mode LIF/gate settings |
-| Steady-state prediction error ≤ ±2 px, constant-velocity motion | `tb_px_bound_300hz` / `tb_accuracy` | 0 violations after warmup in 300 Hz stream; `tb_accuracy` mean_x=1 px, peak_x=16 px acquisition/tile transient |
-| 1 Meps sustained throughput, zero event drops | `tb_aer_throughput_1meps` | 2000/2000 ACK=REQ |
+| Pipeline latency ≤ 5 cycles at 200 MHz, latency-mode settings | `tb_latency` | LATENCY_CYCLES=5 (LIF fire-on-first-hit, gate transparent); bench fails above 5 |
+| Pipeline latency ≤ 5 cycles at 200 MHz, default parameters | `tb_latency_default` | Every emitted prediction 5 cycles after its event; first prediction after 32 events (21 380 cycles from reset); ~17 events per prediction. Cadence figures are characterisation, not asserted |
+| One-step prediction error ≤ ±2 px, constant velocity 1 px/event | `tb_px_bound` / `tb_accuracy` | 667-cycle event spacing (~300 k events/s): mean 0.73 px, max 2 px vs next position; bench also requires mean error below the echo baseline (1 px). `tb_accuracy` mean_x=1 px, peak_x=16 px acquisition/tile transient. Bound is exceeded at 2–3 px/event and the core does not beat echo at 300 events/s — see Known design constraints |
+| 1 Meps sustained throughput, zero event drops | `tb_aer_throughput_1meps` | 2000/2000 ACK=REQ. `aer_ack` is combinational (`aer_req && !rst`), so ACK=REQ holds by construction; the bench shows the pipeline produces one prediction per event at 1 Meps in latency mode |
 | pred_valid and conf_valid suppressed during reset | `tb_reset_midstream_top` | 0 valid leaks over 266-cycle reset |
 | Deterministic re-entry after reset | `tb_reset_midstream_top` | Phase-1/phase-2 outputs bit-exact |
 | state_mem cleared after 2^AW reset cycles | `tb_formal_props` (P3) | All 256 cells verified |
@@ -194,7 +198,7 @@ All claims below are backed by simulation evidence in the test suite. Scope note
 | AER handshake: aer_ack mirrors aer_req within 1 cycle | `tb_aer_rx` | 6 test cases including back-to-back |
 | Both polarities accepted and passed through | `tb_coverage` | pol0_cnt>0, pol1_cnt>0 |
 | Bit-exact replay against frozen golden vectors | `tb_replay_lockstep` | 18/18 hex-exact |
-| Lint-clean RTL (zero Verilator warnings) | `make lint` | 0 warnings (PROCASSINIT suppressed globally; WIDTHTRUNC suppressed inline with safety proof; WIDTHEXPAND fixed structurally) |
+| Lint-clean RTL (zero Verilator warnings) | `make lint` | 0 warnings on Verilator 5.020 (PROCASSINIT suppressed where the version supports it; WIDTHTRUNC suppressed inline with safety proof; WIDTHEXPAND fixed structurally) |
 | Pipeline survives 50 000-event random stress | `tb_random_stress_top` | No X on outputs, no stuck valids |
 | NTRACK=4 predictions survive AXI backpressure | `tb_axi4s_pred_burst` | 33/33 assertions PASS |
 | ARM IHI 0051A TVALID stability | `tb_axi4s_pred_burst` case 5 | PASS |
@@ -377,20 +381,24 @@ For integration evaluation:
 
 | Area | Status |
 |------|--------|
-| Core pipeline RTL | Complete. 34-bench core suite all green (3 claim × 3 runs + 8 units + 20 scenarios + 3 hostile). |
+| Core pipeline RTL | Complete. 38-bench core suite all green (4 claim × 3 runs + 10 units + 21 scenarios + 3 hostile). |
 | AXI4-S integration | Complete. 111-assertion suite all green. |
-| Lint (Verilator -Wall) | Zero warnings. PROCASSINIT suppressed globally (valid init pattern); WIDTHTRUNC suppressed inline with safety comments; WIDTHEXPAND fixed structurally. |
+| Lint (Verilator -Wall) | Zero warnings on Verilator 5.020. PROCASSINIT suppressed where supported (valid init pattern); WIDTHTRUNC suppressed inline with safety comments; WIDTHEXPAND fixed structurally. |
 | Formal verification | Bounded simulation equivalent (50 K cycles, LFSR). Not SymbiYosys/Yosys full formal — those tools are not available in the current toolchain. REQ-07/08/09 are verified via `make formal`, not unbounded model checking. |
 | Synthesis | RTL is vendor-neutral Verilog-2001. Not synthesis-tested against a specific FPGA or cell library in this release. No timing closure report is included. |
 | Silicon verification | No tape-out or FPGA bitstream in this release. All claims are simulation-based. |
 | UAV parameter profile | Application-recommended starting points. Not validated against a physical event camera or a target at range. |
 | CDC | Single-clock design. No CDC paths. Confirmed by code review and Verilator lint. No formal CDC analysis tool has been run. |
-| Power | Activity-proportional by construction (time-mux LIF + burst gate). No switching power estimate or synthesis power report is included. |
+| Power | Activity-proportional by construction (time-mux LIF + burst gate). No switching power estimate or synthesis power report is included; no power figure is claimed. |
+| Sensor data | No recorded DVS data has been run through the core. All stimulus is synthetic. |
+| Comparative benchmark | `benchmarks/` compares the RTL against four software trackers on six synthetic scenes. The software baselines are more accurate on clean scenes (0.5–1 px vs 2.4–4.5 px MAE at h=1); the core is ahead of the Kalman and event-motion baselines on the distractor and noise-burst scenes. See `benchmarks/out/benchmark_report.md`. |
 | Multi-target validation | NTRACK=4 pool tested in simulation. Maximum sustainable target count under realistic clutter has not been characterized. |
 
 ### Known design constraints
 
-- **Scan address:** `libellula_top` requires an external free-running `scan_addr` counter of width `AW`. `libellula_soc` provides this internally; bare `libellula_top` instantiations must drive it.
+- **Scan address:** With the default `LIF_SCAN_MODE=1`, the LIF leak scan is generated internally and the `scan_addr` port is ignored (tie it off). With `LIF_SCAN_MODE=0` (legacy), the host must drive a free-running `scan_addr` counter of width `AW`.
+- **AER receiver protocol:** `aer_rx` is level-sensitive and combinational: every clock cycle with `aer_req` high is one event, and `aer_ack` mirrors `aer_req`. It is not a 4-phase handshake receiver. A source must pulse `aer_req` for one cycle per event; holding it high injects duplicate events. A sensor using true 4-phase AER needs an edge-detecting front end.
+- **Prediction horizon vs event rate:** In `make characterize`, at 1 px/event the ±2 px one-step bound holds at both ~300 k events/s and 300 events/s, but at 300 events/s the mean error (2.0 px) is worse than repeating the last event (1 px): the predictor does not extrapolate at that event spacing. At 2–3 px/event and ~300 k events/s the mean error stays below echo but peaks reach 3–4 px.
 - **Tile hash:** Only the spatial hash (`{x[XW-1:XW-HX], y[YW-1:YW-HY]}`) is supported. XOR hashes break the Reichardt adjacency assumption.
 - **DW=0:** Legal and tested. All delay-lattice ring buffers collapse to depth-1 (combinational). Used in hostile benches where pipeline drain timing matters.
 - **BG_TH_CLOSE=0:** Gate never closes once opened. Valid for continuous-motion scenarios; inappropriate for scenes with frequent target disappearance.

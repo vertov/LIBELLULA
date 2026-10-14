@@ -2,12 +2,20 @@
 #
 # The benches signal failure by PRINTING (FAIL/TIMEOUT) rather than by exit
 # code — vvp exits 0 either way — so each step greps its own log. A step
-# fails if make fails (compile error) OR if any FAIL/TIMEOUT line appears.
+# fails if make fails (compile error, lint error) OR if any FAIL/TIMEOUT line
+# appears. `shell: bash` below is required for the first condition: GitHub's
+# default shell runs without pipefail, so `make ... | tee log` would report
+# tee's exit status and hide a failing make (v22 lint failures were masked
+# this way).
 name: CI
 
 on:
   push:
   pull_request:
+
+defaults:
+  run:
+    shell: bash   # bash --noprofile --norc -eo pipefail
 
 jobs:
   sim:
@@ -32,9 +40,9 @@ jobs:
           make -C sim -s units 2>&1 | tee units.log
           ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' units.log
 
-      - name: Claim benches (latency / 300 Hz / 1 Meps)
+      - name: Claim benches (latency / default-config latency / ±2 px / 1 Meps)
         run: |
-          make -C sim -s latency px300 meps 2>&1 | tee claims.log
+          make -C sim -s latency latency-default pxbound meps 2>&1 | tee claims.log
           ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' claims.log
 
       - name: Scenario benches
@@ -51,3 +59,7 @@ jobs:
         run: |
           make -C sim -s diagnostic 2>&1 | tee diagnostic.log
           ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' diagnostic.log
+
+      - name: Comparative benchmark harness (runs; results not gated)
+        run: |
+          python3 benchmarks/run_benchmarks.py 2>&1 | tee bench.log

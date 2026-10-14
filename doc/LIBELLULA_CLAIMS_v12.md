@@ -1,6 +1,6 @@
-# LIBELLULA Core v22 — Claims Validation
+# LIBELLULA Core v23 — Claims Validation
 
-This document summarizes the technical claims supported by the LIBELLULA Core v22 RTL and the manner in which those claims are validated through simulation. Validation is performed at the RTL level using cycle-accurate testbenches and structural inspection.
+This document summarizes the technical claims supported by the LIBELLULA Core v23 RTL and the manner in which those claims are validated through simulation. Validation is performed at the RTL level using cycle-accurate testbenches and structural inspection.
 
 ---
 
@@ -18,24 +18,25 @@ PASS
 ```
 
 **Interpretation:**
-The current pipeline produces a consistent 5-cycle latency. At 200 MHz, this corresponds to 25 ns, well below one microsecond. The improvement from 6 to 5 cycles followed making `aer_rx` fully combinational. Latency is independent of scene complexity and event history.
+The current pipeline produces a consistent 5-cycle latency for any event that reaches the predictor. At 200 MHz, this corresponds to 25 ns. The improvement from 6 to 5 cycles followed making `aer_rx` fully combinational. `tb_latency` measures this in latency mode (LIF fires on first hit, burst gate transparent). `tb_latency_default` (v23) confirms the same 5 cycles for every prediction emitted under default parameters, where most events are integrated without producing output (one prediction per ~17 events for a single slow target; first prediction after 32 events).
 
 ---
 
 ## 2. Bounded Prediction Error Under Constant Motion
 
 **Claim:**  
-Under constant-velocity motion, the predictor maintains bounded position error.
+Under constant-velocity motion (1 px/event), one-step prediction error stays within ±2 px and below the error of repeating the last event.
 
-**Validation:** `tb_px_bound_300hz`
+**Validation:** `tb_px_bound` (v23; replaces `tb_px_bound_300hz`)
 
 **Result:**  
 ```
+PXBOUND one-step err: mean=0.73 px max=2 px (echo baseline 1 px) bound=2 px
 PASS
 ```
 
 **Interpretation:**  
-The test confirms correct fixed-point α–β predictor behavior and stable convergence after a short warmup period. This validates the algebraic correctness of the predictor implementation under controlled motion.
+Events are 667 cycles apart at 200 MHz (~300 k events/s). The v22 bench labelled this 300 Hz and scored against the current position, which an echo would also pass; v23 scores against the next position. The bound is exceeded at 2–3 px/event, and at 300 events/s the predictor does not improve on echo (`make pxbound-char`).
 
 ---
 
@@ -74,7 +75,7 @@ This confirms that computation and activity are driven by events, supporting eff
 ## 5. Coherent Processing Pipeline
 
 **Claim:**  
-LIBELLULA Core v22 implements a complete and coherent event-processing pipeline from ingress through motion estimation and prediction.
+LIBELLULA Core v23 implements a complete and coherent event-processing pipeline from ingress through motion estimation and prediction.
 
 **Validated Stages:**  
 - `aer_rx`  
@@ -119,7 +120,8 @@ make test
 Individual tests:
 ```bash
 make latency
-make px300
+make pxbound
+make latency-default
 make meps
 make power
 ```
@@ -148,4 +150,4 @@ System-level performance beyond the core (sensors, optics, external protocols) i
 
 ## Summary
 
-The LIBELLULA Core v22 claims are supported by targeted RTL simulation and structural analysis. The design demonstrates deterministic, event-driven operation with bounded latency, bounded resources, and coherent predictive motion processing consistent with the implemented architecture.
+The LIBELLULA Core v23 claims are supported by targeted RTL simulation and structural analysis. The design demonstrates deterministic, event-driven operation with bounded latency, bounded resources, and coherent predictive motion processing consistent with the implemented architecture.

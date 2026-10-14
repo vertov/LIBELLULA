@@ -61,12 +61,12 @@ module tb_sparse_events;
 
     integer pred_count = 0;
     integer i;
-    localparam SPARSE_DELAY = 667;  // 300Hz event rate
+    localparam SPARSE_DELAY = 667;  // 3.3 us at 200 MHz (~300 k events/s)
 
     initial begin
         #(20*T_NS) rst = 0;
 
-        $display("Sparse events test: 1 event every %0d cycles (300Hz rate)", SPARSE_DELAY);
+        $display("Sparse events test: 1 event every %0d cycles (~300 k events/s at 200 MHz)", SPARSE_DELAY);
 
         // Park scan at fixed address - motion detection works via direction signals
         scan = hash(100, 100);

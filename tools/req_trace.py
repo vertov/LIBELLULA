@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Requirement-to-evidence traceability report for LIBELLULA Core v22.
+Requirement-to-evidence traceability report for LIBELLULA Core v23.
 
 Generates build/req_trace.md mapping each technical claim to its
 verification evidence (testbench, Makefile target, property type).
@@ -25,9 +25,9 @@ REQ_TABLE = [
      "Simulation", "test_max_event_rate", "tb/tb_aer_throughput_1meps.v",
      "2000 events at 1 Meps; all 2000 acknowledged, zero drops"),
 
-    ("REQ-04", "Prediction rate ≥ 300 Hz; error ≤ ±2 px",
-     "Simulation", "test_single_target_linear", "tb/tb_px_bound_300hz.v",
-     "300 Hz event stream over 1 s; verifies pred_valid rate and per-frame MAE"),
+    ("REQ-04", "One-step prediction error ≤ ±2 px, constant velocity",
+     "Simulation", "test_single_target_linear", "tb/tb_px_bound.v",
+     "200 events, 667-cycle spacing (~300 k events/s), 1 px/event; error vs next position, must beat echo baseline"),
 
     ("REQ-05", "pred_valid and conf_valid suppressed during reset",
      "Simulation + Bounded formal", "test_reset", "tb_hostile/tb_reset_midstream_top.v",
@@ -111,7 +111,7 @@ REQ_TABLE = [
 def gen_report(out_path=None):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     lines = []
-    lines.append("# LIBELLULA Core v22 — Requirements Traceability Report")
+    lines.append("# LIBELLULA Core v23 — Requirements Traceability Report")
     lines.append(f"Generated: {now}")
     lines.append("")
     lines.append("| ID | Claim | Evidence Type | `make` Target | Bench / Source | What is Checked |")
