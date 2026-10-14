@@ -1,6 +1,6 @@
-# LIBELLULA Core v23 — Engineering Overview
+# LIBELLULA Core v24 — Engineering Overview
 
-**Revision:** v23 (claims and verification-harness corrections; RTL behaviour unchanged from v22)  
+**Revision:** v24 (adds the `stmd/` Python small-target reference model; RTL behaviour unchanged from v22)  
 **Simulation toolchain:** Icarus Verilog 12.0 / vvp, Verilator 5.020 or later  
 **RTL language:** Verilog-2001 (`-g2012` flag required for some constructs)  
 **Audience:** FPGA/ASIC engineers, DVS/event-camera integrators, potential licensees
@@ -9,7 +9,7 @@
 
 ## 1. What This Document Is
 
-This document is a complete technical account of the LIBELLULA Core v23 RTL pipeline: its architecture, interface contracts, timing model, parameter space, test suite, and validated performance limits. It is based entirely on the contents of the repository — RTL source, testbench results, and diagnostic records — and distinguishes clearly between what has been measured in simulation and what has not.
+This document is a complete technical account of the LIBELLULA Core v24 RTL pipeline: its architecture, interface contracts, timing model, parameter space, test suite, and validated performance limits. It is based entirely on the contents of the repository — RTL source, testbench results, and diagnostic records — and distinguishes clearly between what has been measured in simulation and what has not.
 
 Claims are cited to specific testbenches or diagnostic records. Unconstrained claims are not made.
 
@@ -22,7 +22,7 @@ Claims are cited to specific testbenches or diagnostic records. Unconstrained cl
 LIBELLULA is a 6-stage synchronous pipeline that converts a raw AER event stream into pixel-coordinate predictions. Each stage is a separate RTL module instantiated in `rtl/libellula_top.v`. 
 
 ### 2.2 System Integration: The "Pure Motion Processor" Boundary
-The LIBELLULA Core v23 is architected as a **Pure Motion Processor**. It provides high-fidelity tracking of independent motion within an AER stream but does not internally compensate for the rotational or translational ego-motion of the sensor platform (e.g., UAV yaw/pitch). 
+The LIBELLULA Core v24 is architected as a **Pure Motion Processor**. It provides high-fidelity tracking of independent motion within an AER stream but does not internally compensate for the rotational or translational ego-motion of the sensor platform (e.g., UAV yaw/pitch). 
 
 **Integration Strategy:**
 - **Fixed/Gimbaled Platforms:** The core can ingest raw DVS output directly.
@@ -619,7 +619,7 @@ build/eval_package/
 
 ---
 
-## 9. Known Limitations (Unresolved as of v23)
+## 9. Known Limitations (Unresolved as of v24)
 
 1. **Power bench has no automated assertion.** `tb_power_lo` and `tb_power_hi` produce VCD and print toggle counts but do not assert a minimum ratio. Activity-proportional switching is a structural property of the architecture, not an automatically checked simulation result.
 

@@ -1,4 +1,4 @@
-# LIBELLULA Core v23 — Claims Traceability (Bench → Measurement Point → Assumptions)
+# LIBELLULA Core v24 — Claims Traceability (Bench → Measurement Point → Assumptions)
 
 This table ties each externally-stated technical claim to:
 - the specific RTL bench that supports it,

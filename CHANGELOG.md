@@ -1,5 +1,29 @@
 # Changelog
 
+## v24 — 2026-10-14
+
+Adds `stmd/`, a Python reference model for event-driven small-target detection, evaluated on real event-camera data. **RTL behaviour is unchanged from v22**; the edits outside `stmd/` are this entry, a README section, one CI step and version labels.
+
+- **Model** (`stmd/libstmd/model.py`). Causal, per-event pipeline: background-activity filter → flicker habituation → optional ESTMD polarity correlation → centre-surround inhibition (responses and raw activity) → tracker pool with α-β update and a stationarity check → event labelling.
+- **Evaluation** (`stmd/libstmd/metrics.py`). Port of the EV-UAV authors' evaluator (IoU, ACC, Pd, Fa), matched against a line-by-line transcription of their code (`stmd/scripts/check_metrics.py`).
+- **Protocol.**
+  - 33 parameters tuned by random search on EV-UAV `val` only: about 1,150 configurations for the full model, plus 150 per ablation.
+  - The selected variant (no ESTMD stage) was chosen on `val`.
+  - `test` was scored once.
+- **Results on EV-UAV test.**
+  - This model: IoU 0.667, recall 0.845, Pd 0.883.
+  - Published EV-SpSegNet: 0.552, 0.650, 0.775.
+  - 95 % bootstrap intervals over sequences are in `stmd/results/`.
+  - The paper's Fa column is not reproducible with the released scorer: 9 of its 14 values exceed the scorer's maximum on this test set (`stmd/scripts/fa_bound.py`).
+- **Ablations.**
+  - Centre-surround inhibition and the tracker carry the result.
+  - The ESTMD polarity correlation gives no measurable gain.
+- **Known failures.**
+  - Sun glare (test_008): 79 % of all test false positives sit in 14 persistently hot cells.
+  - Dense sensor noise (test_022, test_023): target-to-noise event ratio about 5:1, against 12–40:1 in clean scenes.
+- **CI** runs a data-free synthetic smoke test of the model (`stmd/tests/smoke.py`).
+- EV-UAV data is not included.
+
 ## v23 — 2026-10-14
 
 Claims and verification-harness corrections. **RTL behaviour is unchanged from v22**: the only edits under `rtl/` are comments and version headers.

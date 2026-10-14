@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Requirement-to-evidence traceability report for LIBELLULA Core v23.
+Requirement-to-evidence traceability report for LIBELLULA Core v24.
 
 Generates build/req_trace.md mapping each technical claim to its
 verification evidence (testbench, Makefile target, property type).
@@ -111,7 +111,7 @@ REQ_TABLE = [
 def gen_report(out_path=None):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     lines = []
-    lines.append("# LIBELLULA Core v23 — Requirements Traceability Report")
+    lines.append("# LIBELLULA Core v24 — Requirements Traceability Report")
     lines.append(f"Generated: {now}")
     lines.append("")
     lines.append("| ID | Claim | Evidence Type | `make` Target | Bench / Source | What is Checked |")
