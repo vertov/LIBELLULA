@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Toggle / FSM coverage report for LIBELLULA Core v24.
+Toggle / FSM coverage report for LIBELLULA Core v25.
 Parses a VCD produced by tb_coverage_full and reports per-module toggle coverage.
 
 Usage:
@@ -105,7 +105,7 @@ def module_short(scope):
 def report(signals, toggles, vcd_path):
     lines = []
     lines.append("=" * 70)
-    lines.append("  LIBELLULA Core v24 — Toggle Coverage Report")
+    lines.append("  LIBELLULA Core v25 — Toggle Coverage Report")
     lines.append(f"  VCD source : {vcd_path}")
     lines.append("=" * 70)
     lines.append("")

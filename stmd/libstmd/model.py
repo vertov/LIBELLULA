@@ -30,6 +30,15 @@ a known insect mechanism or to an existing LIBELLULA block:
      STMD facilitation: response is built along a moving trajectory.
   6. Event labelling: an event is labelled target if it lies within R_lab
      (Chebyshev) of a confirmed track's predicted position.
+  7. Glare adaptation (v25, optional): a slow per-region event-rate
+     estimate (time constant tau_g, g_cell x g_cell px). A region whose rate
+     stays above G_rate is muted: it can neither seed candidates nor have
+     events labelled. A target crosses a region in a fraction of a second;
+     the sun, specular glints and flickering lights stay for seconds.
+  8. Noise adaptation (v25, optional): a global background-rate estimate r
+     (events/px/s) shortens the activity-filter window, requires n_sup_hi
+     supporting neighbours above r_hi, and raises the candidate threshold,
+     so the filter's noise pass rate stays bounded in low light.
 
 All state is per-pixel timestamps / small counters plus per-cell leaky
 accumulators and a fixed number of track slots. Everything is causal: an
@@ -88,6 +97,21 @@ class Params:
     T_lab_ms: float = 100.0
     lab_requires_baf: bool = False
     k_vlab: float = 0.0          # extend label box along velocity: +k_vlab*|v|*T_lab
+    # 7. glare adaptation (v25): slow per-region activity; regions whose event
+    #    rate stays above G_rate for ~tau_g are muted (no candidates, no labels)
+    use_glare: bool = False
+    g_cell: int = 8
+    tau_g_ms: float = 2000.0
+    G_rate: float = 4.0          # events / pixel / s
+    # 8. noise adaptation (v25): global background-rate estimate r (ev/px/s)
+    #    shortens the activity-filter window, raises its support count above
+    #    r_hi, and raises the candidate threshold
+    use_noise_adapt: bool = False
+    tau_n_ms: float = 500.0
+    r0: float = 0.2              # T_ba_eff = T_ba / (1 + r / r0)
+    r_hi: float = 0.5            # above this rate the filter needs n_sup_hi neighbours
+    n_sup_hi: int = 2
+    r_theta: float = 1.0         # theta_eff = theta * (1 + r / r_theta)
 
     def as_tuple(self):
         return tuple(float(getattr(self, f.name)) for f in fields(self))
@@ -132,6 +156,16 @@ KEYS = (
     "T_lab_ms",
     "lab_requires_baf",
     "k_vlab",
+    "use_glare",
+    "g_cell",
+    "tau_g_ms",
+    "G_rate",
+    "use_noise_adapt",
+    "tau_n_ms",
+    "r0",
+    "r_hi",
+    "n_sup_hi",
+    "r_theta",
 )
 assert set(KEYS) == {f.name for f in fields(Params)}, "KEYS out of sync with Params"
 
@@ -173,6 +207,16 @@ def _run(x, y, t, p, P):
     T_lab = P[30] * 1000.0   # T_lab_ms
     lab_baf = P[31] > 0.5   # lab_requires_baf
     k_vlab = P[32]   # k_vlab
+    use_glare = P[33] > 0.5   # use_glare
+    gcs = int(P[34])   # g_cell
+    tau_g = P[35] * 1000.0   # tau_g_ms
+    G_rate = P[36]   # G_rate
+    use_noise = P[37] > 0.5   # use_noise_adapt
+    tau_n = P[38] * 1000.0   # tau_n_ms
+    r0 = P[39]   # r0
+    r_hi = P[40]   # r_hi
+    n_sup_hi = int(P[41])   # n_sup_hi
+    r_theta = P[42]   # r_theta
 
     NEG = -(1 << 60)
     last_any = np.full((H, W), NEG, np.int64)
@@ -187,6 +231,14 @@ def _run(x, y, t, p, P):
     R_t = np.zeros((Hc, Wc), np.int64)
     A = np.zeros((Hc, Wc), np.float64)
     A_t = np.zeros((Hc, Wc), np.int64)
+    Hg = (H + gcs - 1) // gcs
+    Wg = (W + gcs - 1) // gcs
+    G = np.zeros((Hg, Wg), np.float64)
+    G_t = np.zeros((Hg, Wg), np.int64)
+    G_norm = (tau_g / 1e6) * gcs * gcs     # accumulator -> events/px/s
+    Ng = 0.0
+    Ng_t = 0
+    N_norm = (tau_n / 1e6) * W * H
 
     # tracks
     tr_on = np.zeros(NT, np.bool_)
@@ -214,8 +266,27 @@ def _run(x, y, t, p, P):
     for i in range(n):
         xi = x[i]; yi = y[i]; ti = t[i]; q = p[i]
 
+        # ---- 7/8. slow regional and global activity estimates (all events)
+        glare = False
+        if use_glare:
+            gy = yi // gcs; gx = xi // gcs
+            G[gy, gx] = G[gy, gx] * np.exp(-(ti - G_t[gy, gx]) / tau_g) + 1.0
+            G_t[gy, gx] = ti
+            glare = G[gy, gx] / G_norm > G_rate
+        T_ba_eff = T_ba
+        n_sup = 1
+        theta_eff = theta
+        if use_noise:
+            Ng = Ng * np.exp(-(ti - Ng_t) / tau_n) + 1.0
+            Ng_t = ti
+            rate = Ng / N_norm
+            T_ba_eff = T_ba / (1.0 + rate / r0)
+            if rate > r_hi:
+                n_sup = n_sup_hi
+            theta_eff = theta * (1.0 + rate / r_theta)
+
         # ---- 1. background-activity filter (8 neighbours, not self)
-        baf = False
+        sup = 0
         for dy in range(-1, 2):
             yy = yi + dy
             if yy < 0 or yy >= H:
@@ -226,8 +297,9 @@ def _run(x, y, t, p, P):
                 xx = xi + dx
                 if xx < 0 or xx >= W:
                     continue
-                if ti - last_any[yy, xx] <= T_ba:
-                    baf = True
+                if ti - last_any[yy, xx] <= T_ba_eff:
+                    sup += 1
+        baf = sup >= n_sup
         last_any[yi, xi] = ti
         baf_out[i] = baf
 
@@ -298,7 +370,7 @@ def _run(x, y, t, p, P):
             score = rc
             if use_sur and ns > 0:
                 score = rc - (k_inh * rs + k_act * as_) * nc / ns
-            cand = score >= theta
+            cand = score >= theta_eff and not glare
         cand_out[i] = cand
 
         # ---- 5. tracker
@@ -369,7 +441,7 @@ def _run(x, y, t, p, P):
                         tr_cx[k] = xi; tr_cy[k] = yi; tr_ct[k] = ti; tr_static[k] = False
                         assign[i] = 100 + k
             # ---- 6. labelling
-            if (not lab_baf) or baf:
+            if ((not lab_baf) or baf) and not glare:
                 for k in range(NT):
                     if tr_on[k] and tr_conf[k] and (not tr_static[k]) and ti - tr_tu[k] <= T_lab:
                         dtk = ti - tr_tu[k]

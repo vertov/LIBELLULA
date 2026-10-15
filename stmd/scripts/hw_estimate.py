@@ -29,12 +29,14 @@ if P.use_habituation:
     px_bits += TS + 4 + 1         # flip-count timestamp, 4-bit leaky count, last polarity
 cells = ((H + P.cell - 1) // P.cell) * ((W + P.cell - 1) // P.cell)
 cell_bits = (2 if P.use_surround and P.k_act > 0 else 1) * (16 + TS)
-mem_kB = (W * H * px_bits + cells * cell_bits) / 8 / 1024
+g_cells = ((H + P.g_cell - 1) // P.g_cell) * ((W + P.g_cell - 1) // P.g_cell) if P.use_glare else 0
+mem_kB = (W * H * px_bits + cells * cell_bits + g_cells * (16 + TS)) / 8 / 1024
 
 nb = (2 * P.nb_radius + 1) ** 2 if P.use_estmd else 0
 ring = (2 * (P.surround_r if P.use_surround else 1) + 1) ** 2
 acc_per_event = (
     8 + 1                                 # BAF neighbour reads + write
+    + (2 if P.use_glare else 0)           # glare cell read/write
     + (2 if P.use_habituation else 0)     # flip state read/write
     + (baf / n) * (nb + 1 + 2)            # ESTMD reads, polarity write, activity cell update
     + (resp / n) * (ring * (2 if P.k_act > 0 else 1) + 2)   # centre-surround reads
@@ -44,6 +46,7 @@ acc_per_event = (
 print(json.dumps({
     "per_pixel_bits": px_bits,
     "cells": cells,
+    "glare_cells": g_cells,
     "state_memory_kB": round(mem_kB, 1),
     "events": int(n), "mean_event_rate_ev_per_s": round(n / dur_s),
     "peak_sequence_rate_ev_per_s": round(peak),

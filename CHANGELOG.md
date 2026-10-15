@@ -1,5 +1,25 @@
 # Changelog
 
+## v25 — 2026-10-14
+
+`stmd/` reference model: glare and noise adaptation, re-tuned on EV-UAV `train` + `val`. **RTL behaviour is unchanged from v22**; the edits outside `stmd/` are this entry, the README section and version labels.
+
+- **New stages.**
+  - *Glare adaptation:* a slow per-region event-rate estimate (16×16 px, τ 4 s) mutes regions whose rate stays above 1.5 events/px/s, so they cannot seed candidates or be labelled.
+  - *Noise adaptation:* a global background-rate estimate shortens the activity-filter window, requires two supporting neighbours above 0.3 events/px/s, and raises the candidate threshold.
+- **Protocol.**
+  - 550 configurations searched on `train` + `val` (123 sequences); `test` held out.
+  - The glare and noise stages were designed after seeing v24's failures on test sequences; their parameters were tuned without test.
+- **Results on EV-UAV test.**
+  - v25: IoU 0.813, recall 0.934, Pd 0.902.
+  - v24: 0.667, 0.845, 0.883.
+  - False-positive events fell from 19.0 k to 10.6 k. False-alarm clusters per 50 ms window rose from 0.64 to 1.47, mostly in the two dense-noise sequences.
+- **Glare.** test_008 IoU 0.12 → 0.52; false-positive events on that sequence 15.5 k → 1.8 k.
+- **Noise.** On test_022 and test_023, recall improves (0.59 → 0.86 and 0.50 → 0.82) but precision falls on test_022. Pooled test IoU is unchanged with noise adaptation switched off. Dense noise remains the main failure.
+- **ESTMD.** The ESTMD stage is on as a mild weight in the v25 config; switching it off changes the train+val objective by under 1 % and saves about 260 kB of state.
+- **New scripts.** `search_v25.sh`, `final_eval_v25.py` and `split_profile.py`. `tune.py` accepts several data folders.
+- **Configs.** `configs/selected.json` is v25; `configs/selected_v24.json` is kept.
+
 ## v24 — 2026-10-14
 
 Adds `stmd/`, a Python reference model for event-driven small-target detection, evaluated on real event-camera data. **RTL behaviour is unchanged from v22**; the edits outside `stmd/` are this entry, a README section, one CI step and version labels.
