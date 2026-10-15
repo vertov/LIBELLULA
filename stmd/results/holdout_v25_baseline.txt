@@ -1,0 +1,22 @@
+EVUAV IoU=0.761 ACC=0.919 Pd=0.899 prec=0.816 fc/w=1.50
+TRACK det=0.940 ttfd_ms=161 cov=0.828 false_tracks/min=16.51 false_time=0.153 loc_med=0.9 loc_p90=1.9 (targets=50 tracks=95 false=44 min=2.7)
+  train_003.npz IoU=0.96 Pd=0.99 prec=0.98 fc/w= 0.44 | det=1.00 cov=0.99 ft/min= 0.00 ftime=0.02 loc=0.9
+  train_005.npz IoU=0.87 Pd=0.98 prec=0.87 fc/w= 0.82 | det=1.00 cov=0.97 ft/min= 0.00 ftime=0.13 loc=0.7
+  train_007.npz IoU=0.78 Pd=0.97 prec=0.82 fc/w= 1.09 | det=1.00 cov=0.96 ft/min= 0.00 ftime=0.11 loc=0.7
+  train_016.npz IoU=0.87 Pd=0.93 prec=0.94 fc/w= 0.54 | det=1.00 cov=0.93 ft/min= 0.00 ftime=0.08 loc=0.8
+  train_018.npz IoU=0.91 Pd=0.99 prec=0.94 fc/w= 0.49 | det=1.00 cov=0.98 ft/min= 0.00 ftime=0.08 loc=0.7
+  train_021.npz IoU=0.92 Pd=0.97 prec=0.95 fc/w= 0.49 | det=1.00 cov=0.96 ft/min= 0.00 ftime=0.04 loc=0.7
+  train_025.npz IoU=0.90 Pd=0.96 prec=0.90 fc/w= 0.72 | det=1.00 cov=0.96 ft/min= 0.00 ftime=0.14 loc=0.7
+  train_029.npz IoU=0.74 Pd=0.94 prec=0.76 fc/w= 3.72 | det=1.00 cov=0.94 ft/min=105.00 ftime=0.48 loc=0.9
+  train_033.npz IoU=0.86 Pd=1.00 prec=0.86 fc/w= 2.40 | det=1.00 cov=1.00 ft/min=82.51 ftime=0.37 loc=0.9
+  train_034.npz IoU=0.88 Pd=0.98 prec=0.91 fc/w= 1.26 | det=1.00 cov=0.98 ft/min=30.00 ftime=0.23 loc=0.9
+  train_037.npz IoU=0.73 Pd=0.98 prec=0.75 fc/w= 3.09 | det=1.00 cov=0.98 ft/min=60.00 ftime=0.47 loc=0.8
+  train_044.npz IoU=0.51 Pd=0.90 prec=0.53 fc/w= 1.90 | det=0.89 cov=0.86 ft/min=22.50 ftime=0.07 loc=0.8
+  train_059.npz IoU=0.89 Pd=0.92 prec=0.94 fc/w= 0.33 | det=1.00 cov=0.88 ft/min= 0.00 ftime=0.04 loc=0.8
+  train_061.npz IoU=0.51 Pd=0.92 prec=0.53 fc/w= 1.33 | det=1.00 cov=0.88 ft/min=15.00 ftime=0.20 loc=0.8
+  train_068.npz IoU=0.91 Pd=0.95 prec=0.94 fc/w= 0.96 | det=1.00 cov=0.93 ft/min= 0.00 ftime=0.01 loc=1.0
+  train_071.npz IoU=0.80 Pd=0.86 prec=0.87 fc/w= 1.40 | det=1.00 cov=0.87 ft/min= 0.00 ftime=0.04 loc=1.4
+  train_086.npz IoU=0.88 Pd=0.83 prec=0.97 fc/w= 0.32 | det=0.78 cov=0.77 ft/min= 0.00 ftime=0.08 loc=1.1
+  train_089.npz IoU=0.53 Pd=0.73 prec=0.70 fc/w= 2.11 | det=1.00 cov=0.46 ft/min= 7.50 ftime=0.08 loc=1.1
+  train_090.npz IoU=0.41 Pd=0.66 prec=0.58 fc/w= 1.65 | det=1.00 cov=0.41 ft/min= 7.50 ftime=0.06 loc=1.1
+  train_092.npz IoU=0.78 Pd=0.93 prec=0.86 fc/w= 4.95 | det=1.00 cov=0.71 ft/min= 0.00 ftime=0.00 loc=1.1

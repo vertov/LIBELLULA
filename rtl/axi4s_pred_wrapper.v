@@ -1,6 +1,6 @@
 // =============================================================================
 // axi4s_pred_wrapper.v
-// AXI4-Stream output wrapper for LIBELLULA Core v25
+// AXI4-Stream output wrapper for LIBELLULA Core v26
 //
 // Bridges LIBELLULA's pred_valid / (x_pred, y_pred, conf) outputs to an
 // AXI4-Stream master interface.  Sits between libellula_top and any AXI4-S

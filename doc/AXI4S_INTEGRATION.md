@@ -1,4 +1,4 @@
-# AXI4-Stream Integration for LIBELLULA Core v25
+# AXI4-Stream Integration for LIBELLULA Core v26
 
 LIBELLULA is **AXI-Compatible** via two thin, drop-in Verilog wrappers that sit around `libellula_top`. The core RTL itself is unchanged. Total added logic is one small FSM on each side (~20 flip-flops combined); no FIFOs required for DVS-rate traffic.
 
@@ -99,4 +99,4 @@ PASS
 
 ## Design & Reuse one-liner
 
-> LIBELLULA Core v25 now exposes a 200 MHz AXI4-Stream interface on both event input and prediction output via two small AMBA-compliant bridge modules. Drop-in compatible with standard Xilinx/Intel AXIS infrastructure (DMA, data FIFO, interconnect); no changes required to the core RTL.
+> LIBELLULA Core v26 now exposes a 200 MHz AXI4-Stream interface on both event input and prediction output via two small AMBA-compliant bridge modules. Drop-in compatible with standard Xilinx/Intel AXIS infrastructure (DMA, data FIFO, interconnect); no changes required to the core RTL.

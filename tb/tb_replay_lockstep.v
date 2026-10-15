@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-// Lockstep replay bench for LIBELLULA Core v25.
+// Lockstep replay bench for LIBELLULA Core v26.
 //
 // Drives the IDENTICAL stimulus used by tb_golden_gen and compares every
 // pred_valid output against the frozen build/golden/expected.txt bit-exactly.

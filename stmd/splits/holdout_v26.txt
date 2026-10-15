@@ -1,0 +1,22 @@
+# v26 held-out split: 20 train sequences, seed 26, stratified
+# strata: glare (>=10 hot cells) 7 available, 3 picked; dense noise (>=0.5 ev/px/s) 11 available, 3 picked; ordinary 81 available, 14 picked
+train_003.npz	# ordinary, bg 0.06 ev/px/s, hot cells 0
+train_005.npz	# ordinary, bg 0.06 ev/px/s, hot cells 0
+train_007.npz	# ordinary, bg 0.07 ev/px/s, hot cells 0
+train_016.npz	# ordinary, bg 0.03 ev/px/s, hot cells 0
+train_018.npz	# ordinary, bg 0.03 ev/px/s, hot cells 0
+train_021.npz	# ordinary, bg 0.03 ev/px/s, hot cells 0
+train_025.npz	# ordinary, bg 0.03 ev/px/s, hot cells 0
+train_029.npz	# glare, bg 0.08 ev/px/s, hot cells 89
+train_033.npz	# glare, bg 0.03 ev/px/s, hot cells 25
+train_034.npz	# ordinary, bg 0.02 ev/px/s, hot cells 4
+train_037.npz	# ordinary, bg 0.02 ev/px/s, hot cells 4
+train_044.npz	# glare, bg 0.41 ev/px/s, hot cells 14
+train_059.npz	# ordinary, bg 0.06 ev/px/s, hot cells 4
+train_061.npz	# ordinary, bg 0.06 ev/px/s, hot cells 4
+train_068.npz	# ordinary, bg 0.04 ev/px/s, hot cells 2
+train_071.npz	# ordinary, bg 0.04 ev/px/s, hot cells 3
+train_086.npz	# ordinary, bg 0.01 ev/px/s, hot cells 1
+train_089.npz	# noise, bg 0.56 ev/px/s, hot cells 0
+train_090.npz	# noise, bg 0.58 ev/px/s, hot cells 0
+train_092.npz	# noise, bg 0.82 ev/px/s, hot cells 0

@@ -16,26 +16,28 @@ The implementation is Verilog-2001, vendor-neutral, and verified against a 23-re
 
 ---
 
-## Small-Target Detector Reference Model (`stmd/`)
+## Small-Target Detector (`stmd/`, `rtl/stmd_frontend.v`)
 
-`stmd/` holds a Python reference model that re-aims the LIBELLULA approach at the dragonfly's actual task: finding tiny moving targets. It processes events one at a time with the same building blocks as the RTL (activity filter, per-pixel timestamps, tracker pool, α-β update). On top of those it adds insect-style flicker habituation, centre-surround inhibition, slow regional adaptation against glare, noise-adaptive filtering and an optional ESTMD polarity-correlation stage. It is software only; no RTL implements it yet.
+`stmd/` holds a reference model that re-aims the LIBELLULA approach at the dragonfly's actual task: finding tiny moving targets. It processes events one at a time with the same building blocks as the core RTL (activity filter, per-pixel timestamps, tracker pool, α-β update) plus insect-style flicker habituation, centre-surround inhibition, regional glare adaptation and noise-adaptive filtering. v26 adds a fixed-point C reference of the whole pipeline and a Verilog module for the per-pixel front end (`rtl/stmd_frontend.v`) that matches the C model bit for bit on replayed events.
 
-It was evaluated on the public EV-UAV dataset: real DAVIS346 recordings of tiny drones taken with a static camera. v25 parameters were tuned on the dataset's `train` and `val` splits. The `test` split is held out and was scored with a port of the dataset authors' own scoring code.
+Evaluated on the public EV-UAV dataset (DAVIS346, static camera, tiny drones, per-event labels), with a port of the dataset authors' scorer and with track-level metrics.
 
-| EV-UAV test (24 sequences) | IoU | Target-event recall | Per-window detection (Pd) |
-|---|---:|---:|---:|
-| `stmd` v25 (causal, 43 hand-set parameters) | 0.813 | 0.934 | 0.902 |
-| `stmd` v24 | 0.667 | 0.845 | 0.883 |
-| EV-SpSegNet, published (4.0 M-weight network, whole-clip, GPU) | 0.552 | 0.650 | 0.775 |
+| | IoU | Pd | targets detected | window coverage | false tracks / min |
+|---|---:|---:|---:|---:|---:|
+| **v26 held-out split** (20 `train` sequences never used for tuning) | | | | | |
+| segmentation point | 0.764 | 0.888 | 0.94 | 0.80 | 20.6 |
+| alarm point | 0.664 | 0.745 | 0.80 | 0.65 | 3.0 |
+| v25 on the same split | 0.761 | 0.899 | 0.94 | 0.83 | 16.5 |
+| **EV-UAV `test`** (scored once for v25; not used since) | | | | | |
+| v25 | 0.813 | 0.902 | — | — | — |
+| EV-SpSegNet, published (4.0 M-weight network, whole-clip, GPU) | 0.552 | 0.775 | — | — | — |
 
-- **Uncertainty.** The published values lie outside v25's 95 % intervals over test sequences.
-- **Not like-for-like.** The systems differ in causality, compute and training regime.
-- **What does the work.** Centre-surround inhibition, the tracker and, for sun glare, slow regional adaptation. On the glare test sequence, false-positive events fell from 15.5 k to 1.8 k.
-- **Noise.** Dense low-light sensor noise is not solved. Noise adaptation finds the target more often there but adds scattered false alarms.
-- **ESTMD.** The dragonfly-specific ESTMD correlation contributes under 1 %.
-- **Hardware estimate.** About 650 kB of state (about 390 kB without ESTMD) and about 47 state accesses per event at 346×260.
+- **What holds up.** Centre-surround inhibition, the tracker and glare adaptation. Removing glare adaptation drops held-out IoU from 0.76 to 0.55.
+- **What does not.** Dense low-light noise. The alarm point meets a false-track budget mainly by giving up those scenes.
+- **ESTMD.** The dragonfly-specific polarity correlation contributes under 1 %.
+- **Hardware.** C-model widths give about 1 MB of state at 346×260; the front-end RTL is about 7 000 generic gates for a 32×32 instance (Yosys estimate), with per-pixel memory on top.
 
-Details, per-sequence effects, ablations and reproduction steps are in [`stmd/README.md`](stmd/README.md).
+Details, intervals, ablations and reproduction steps: [`stmd/README.md`](stmd/README.md), [`stmd/docs/CREF.md`](stmd/docs/CREF.md), [`stmd/docs/TRACK_METRICS.md`](stmd/docs/TRACK_METRICS.md).
 
 ---
 
@@ -64,7 +66,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Architecture
 
 ```
-                      LIBELLULA Core v25 — 6-Stage Synchronous Pipeline
+                      LIBELLULA Core v26 — 6-Stage Synchronous Pipeline
  ──────────────────────────────────────────────────────────────────────────────────
   AER Input          LIF Layer           Delay Lattice       Motion Detect
   ──────────         ──────────          ─────────────       ─────────────
@@ -96,7 +98,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Repository Structure
 
 ```
-LIBELLULA_Core_v25/
+LIBELLULA_Core_v26/
 ├── rtl/
 │   ├── libellula_top.v          Top-level — core pipeline, all tuning parameters
 │   ├── libellula_soc.v          UAV SoC wrapper (AXI4-S in/out, 64-bit TDATA)
@@ -108,6 +110,7 @@ LIBELLULA_Core_v25/
 │   ├── tracker_pool.v           N-target tracker pool (L1 routing, coast counter)
 │   ├── ab_predictor.v           α-β predictor, Q8.8, outlier rejection, VEL_INIT, velocity zeroing on direction reversal
 │   ├── conf_gate.v              Confidence scoring
+│   ├── stmd_frontend.v          Small-target front end: per-pixel activity filter, glare, habituation (v26)
 │   ├── axi4s_to_aer.v           AXI4-Stream → AER bridge (SoC input)
 │   └── axi4s_pred_wrapper.v     Prediction → AXI4-Stream bridge (SoC output)
 │
@@ -132,7 +135,8 @@ LIBELLULA_Core_v25/
 │
 ├── diagnostics_full/            Full characterisation logs and repair history
 ├── doc/                         Design notes, CLAIMS.md
-├── stmd/                        Python small-target detector reference model + EV-UAV evaluation
+├── stmd/                        Small-target detector: Python model, C reference, metrics, EV-UAV evaluation
+├── tb/vectors/stmd_fe/          Replay vectors + tables for rtl/stmd_frontend.v (generated from the C model)
 └── build/                       Generated artifacts (created by make targets)
     ├── golden/                  Frozen stimulus and expected output vectors
     ├── eval_package/            Packaged evaluation artifacts

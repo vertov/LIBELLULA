@@ -1,6 +1,6 @@
-# LIBELLULA Core v25 — Claims Validation
+# LIBELLULA Core v26 — Claims Validation
 
-This document summarizes the technical claims supported by the LIBELLULA Core v25 RTL and the manner in which those claims are validated through simulation. Validation is performed at the RTL level using cycle-accurate testbenches and structural inspection.
+This document summarizes the technical claims supported by the LIBELLULA Core v26 RTL and the manner in which those claims are validated through simulation. Validation is performed at the RTL level using cycle-accurate testbenches and structural inspection.
 
 ---
 
@@ -75,7 +75,7 @@ This confirms that computation and activity are driven by events, supporting eff
 ## 5. Coherent Processing Pipeline
 
 **Claim:**  
-LIBELLULA Core v25 implements a complete and coherent event-processing pipeline from ingress through motion estimation and prediction.
+LIBELLULA Core v26 implements a complete and coherent event-processing pipeline from ingress through motion estimation and prediction.
 
 **Validated Stages:**  
 - `aer_rx`  
@@ -150,4 +150,4 @@ System-level performance beyond the core (sensors, optics, external protocols) i
 
 ## Summary
 
-The LIBELLULA Core v25 claims are supported by targeted RTL simulation and structural analysis. The design demonstrates deterministic, event-driven operation with bounded latency, bounded resources, and coherent predictive motion processing consistent with the implemented architecture.
+The LIBELLULA Core v26 claims are supported by targeted RTL simulation and structural analysis. The design demonstrates deterministic, event-driven operation with bounded latency, bounded resources, and coherent predictive motion processing consistent with the implemented architecture.

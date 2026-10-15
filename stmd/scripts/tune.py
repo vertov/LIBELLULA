@@ -1,13 +1,14 @@
 """Random-search tuning with per-sequence raw counts, so any pooling (folds,
 held-out sets) can be computed afterwards without re-running.
 
-usage: tune.py DATA_DIR OUT.jsonl N_CONFIGS [SEED] [BASE_JSON|-] [SPREAD] [FIXED_JSON]
+usage: tune.py DATA_DIRS OUT.jsonl N_CONFIGS [SEED] [BASE_JSON|-] [SPREAD] [FIXED_JSON]
+       DATA_DIRS is colon-separated; env EXCLUDE_FILE lists sequences to skip.
 """
-import sys, json, random, time
+import os, sys, json, random, time
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.dirname(__import__("os").path.abspath(__file__))))
 from multiprocessing import Pool
 import numpy as np
-from libstmd import data, model, metrics
+from libstmd import data, model, metrics, trackmetrics
 
 SPACE = {
     "T_ba_ms": [10, 20, 40, 60, 80],
@@ -51,9 +52,14 @@ SPACE = {
 SEQS = None
 
 
-def _init(folder):
+def _init(folder, exclude_file=None):
+    """folder: colon-separated data folders. exclude_file: optional text file
+    of sequence names (one per line) to leave out, e.g. the held-out split."""
     global SEQS
-    SEQS = [s for f in folder.split(":") for s in data.load_dir(f)]   # colon-separated folders
+    excl = set()
+    if exclude_file:
+        excl = {l.strip() for l in open(exclude_file) if l.strip() and not l.startswith("#")}
+    SEQS = [s for f in folder.split(":") for s in data.load_dir(f) if s.name not in excl]
 
 
 def evaluate(cfg):
@@ -64,12 +70,20 @@ def evaluate(cfg):
         m = metrics.EvUAVMetrics()
         m.update(s.t_ms, s.x, s.y, s.label, s.ident, o["pred"])
         r = m.result()
-        per[s.name] = [r["tp"], r["fp"], r["fn"], m.obj_num, m.correct_num, m.false_num, m.frame_num]
+        tm = trackmetrics.TrackMetrics(); tm.update(s, o["tracks"])
+        per[s.name] = [r["tp"], r["fp"], r["fn"], m.obj_num, m.correct_num, m.false_num, m.frame_num,
+                       tm.n_targets, tm.n_detected, tm.cov_present, tm.cov_hit, tm.false_uids,
+                       tm.total_uids, tm.rec_windows, tm.rec_windows_false, tm.dur_min]
     return {"cfg": cfg, "per": per}
 
 
 def sample(rng, base=None, spread=1.0):
+    """Sample a config. Keys in SPACE are drawn (or kept from base with
+    probability 1-spread). Base keys NOT in SPACE carry over unchanged.
+    (v25 bug: they were dropped, so `use_estmd` reverted to its default.)"""
     cfg = {}
+    if base is not None:
+        cfg.update({k: v for k, v in base.items() if k not in SPACE})
     for k, vals in SPACE.items():
         if base is not None and k in base and rng.random() > spread:
             cfg[k] = base[k]
@@ -86,12 +100,13 @@ if __name__ == "__main__":
     rng = random.Random(seed)
     cfgs = [sample(rng, base, spread) for _ in range(n)]
     if base is not None:
-        cfgs[0] = {k: base.get(k, cfgs[0][k]) for k in SPACE}
+        cfgs[0] = dict(cfgs[0]); cfgs[0].update(base)   # config 0 = base itself
     fixed = json.loads(sys.argv[7]) if len(sys.argv) > 7 else {}
     for c in cfgs:
         c.update(fixed)
     t0 = time.time()
-    with Pool(2, initializer=_init, initargs=(folder,)) as pool, open(out, "a") as fh:
+    exclude = os.environ.get("EXCLUDE_FILE")
+    with Pool(2, initializer=_init, initargs=(folder, exclude)) as pool, open(out, "a") as fh:
         for i, res in enumerate(pool.imap_unordered(evaluate, cfgs)):
             fh.write(json.dumps(res) + "\n"); fh.flush()
             if (i + 1) % 25 == 0:
