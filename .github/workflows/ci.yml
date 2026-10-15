@@ -64,7 +64,19 @@ jobs:
         run: |
           python3 benchmarks/run_benchmarks.py 2>&1 | tee bench.log
 
+      - name: STMD front-end RTL (lint + bit-exact replay against the C reference)
+        run: |
+          make -C sim -s lint-stmd-fe 2>&1 | tee stmd_fe_lint.log
+          make -C sim -s stmd_fe 2>&1 | tee stmd_fe.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' stmd_fe.log
+
       - name: STMD reference model smoke test (synthetic, no dataset)
         run: |
           python3 -m pip install --quiet -r stmd/requirements.txt
           python3 stmd/tests/smoke.py
+
+      - name: STMD C reference builds and its vectors match the committed ones
+        run: |
+          cc -O2 -std=c99 -Wall -Wextra -Werror -o stmd/cref/stmd_ref stmd/cref/stmd_ref.c -lm
+          python3 stmd/scripts/gen_fe_vectors.py stmd/configs/selected.json tb/vectors/stmd_fe 12000
+          git diff --exit-code --stat tb/vectors/stmd_fe

@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-// Full-coverage stimulus bench for LIBELLULA Core v25.
+// Full-coverage stimulus bench for LIBELLULA Core v26.
 //
 // Exercises all major RTL paths and dumps a VCD for post-simulation
 // toggle / FSM coverage analysis via tools/coverage_report.py.

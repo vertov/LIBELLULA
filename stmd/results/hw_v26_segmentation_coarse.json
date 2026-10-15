@@ -1,0 +1,17 @@
+{
+ "per_pixel_bits": 86,
+ "cells": 10092,
+ "glare_cells": 374,
+ "state_memory_kB": 1036.3,
+ "events": 9324544,
+ "mean_event_rate_ev_per_s": 11963,
+ "peak_sequence_rate_ev_per_s": 81457,
+ "pass_rates": {
+  "baf": 0.126,
+  "response": 0.1,
+  "candidate": 0.0257
+ },
+ "mean_state_accesses_per_event": 25.9,
+ "accesses_per_response_event": 40,
+ "surround": "coarse 3x3 grid (k=3)"
+}

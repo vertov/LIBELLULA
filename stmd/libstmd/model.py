@@ -112,6 +112,13 @@ class Params:
     r_hi: float = 0.5            # above this rate the filter needs n_sup_hi neighbours
     n_sup_hi: int = 2
     r_theta: float = 1.0         # theta_eff = theta * (1 + r / r_theta)
+    # 9. cheaper surround (v26): 0 = full ring of (2r+1)^2-9 cells (reads
+    #    scale with r^2); 1 = coarse grid: a second accumulator grid of
+    #    sur_k x sur_k fine cells; surround = 3x3 coarse block around the
+    #    event minus the fine 3x3 centre (9 coarse reads instead of 72 ring
+    #    reads). Area-normalised like the ring.
+    sur_mode: int = 0
+    sur_k: int = 3
 
     def as_tuple(self):
         return tuple(float(getattr(self, f.name)) for f in fields(self))
@@ -166,6 +173,8 @@ KEYS = (
     "r_hi",
     "n_sup_hi",
     "r_theta",
+    "sur_mode",
+    "sur_k",
 )
 assert set(KEYS) == {f.name for f in fields(Params)}, "KEYS out of sync with Params"
 
@@ -217,6 +226,8 @@ def _run(x, y, t, p, P):
     r_hi = P[40]   # r_hi
     n_sup_hi = int(P[41])   # n_sup_hi
     r_theta = P[42]   # r_theta
+    sur_mode = int(P[43])   # sur_mode
+    sur_k = int(P[44])   # sur_k
 
     NEG = -(1 << 60)
     last_any = np.full((H, W), NEG, np.int64)
@@ -231,6 +242,10 @@ def _run(x, y, t, p, P):
     R_t = np.zeros((Hc, Wc), np.int64)
     A = np.zeros((Hc, Wc), np.float64)
     A_t = np.zeros((Hc, Wc), np.int64)
+    Hk = (Hc + sur_k - 1) // sur_k
+    Wk = (Wc + sur_k - 1) // sur_k
+    RK = np.zeros((Hk, Wk), np.float64); RK_t = np.zeros((Hk, Wk), np.int64)
+    AK = np.zeros((Hk, Wk), np.float64); AK_t = np.zeros((Hk, Wk), np.int64)
     Hg = (H + gcs - 1) // gcs
     Wg = (W + gcs - 1) // gcs
     G = np.zeros((Hg, Wg), np.float64)
@@ -255,6 +270,15 @@ def _run(x, y, t, p, P):
     tr_cx = np.zeros(NT); tr_cy = np.zeros(NT)
     tr_ct = np.zeros(NT, np.int64)          # stationarity checkpoint
     tr_static = np.zeros(NT, np.bool_)
+    tr_uid = np.zeros(NT, np.int64)          # unique id per spawned track
+    uid_next = 0
+    # confirmed-track output log: one record per update of a confirmed,
+    # moving track (time, uid, x, y, vx, vy)
+    trk_t = np.zeros(n, np.int64)
+    trk_uid = np.zeros(n, np.int64)
+    trk_x = np.zeros(n); trk_y = np.zeros(n)
+    trk_vx = np.zeros(n); trk_vy = np.zeros(n)
+    n_trk = 0
 
     pred = np.zeros(n, np.uint8)
     baf_out = np.zeros(n, np.uint8)
@@ -347,12 +371,20 @@ def _run(x, y, t, p, P):
             cy = yi // cs; cx = xi // cs
             A[cy, cx] = A[cy, cx] * np.exp(-(ti - A_t[cy, cx]) / tau_acc) + 1.0
             A_t[cy, cx] = ti
+            if sur_mode == 1:
+                ky = cy // sur_k; kx = cx // sur_k
+                AK[ky, kx] = AK[ky, kx] * np.exp(-(ti - AK_t[ky, kx]) / tau_acc) + 1.0
+                AK_t[ky, kx] = ti
         if resp:
             cy = yi // cs; cx = xi // cs
             R[cy, cx] = R[cy, cx] * np.exp(-(ti - R_t[cy, cx]) / tau_acc) + wgt
             R_t[cy, cx] = ti
-            rc = 0.0; rs = 0.0; as_ = 0.0; nc = 0; ns = 0
-            rr = sr if use_sur else 1
+            if sur_mode == 1:
+                ky = cy // sur_k; kx = cx // sur_k
+                RK[ky, kx] = RK[ky, kx] * np.exp(-(ti - RK_t[ky, kx]) / tau_acc) + wgt
+                RK_t[ky, kx] = ti
+            rc = 0.0; rs = 0.0; as_ = 0.0; ac = 0.0; nc = 0; ns = 0
+            rr = sr if (use_sur and sur_mode == 0) else 1
             for dy in range(-rr, rr + 1):
                 yy = cy + dy
                 if yy < 0 or yy >= Hc:
@@ -364,9 +396,28 @@ def _run(x, y, t, p, P):
                     v = R[yy, xx] * np.exp(-(ti - R_t[yy, xx]) / tau_acc)
                     if abs(dy) <= 1 and abs(dx) <= 1:
                         rc += v; nc += 1
+                        if sur_mode == 1:
+                            ac += A[yy, xx] * np.exp(-(ti - A_t[yy, xx]) / tau_acc)
                     else:
                         rs += v; ns += 1
                         as_ += A[yy, xx] * np.exp(-(ti - A_t[yy, xx]) / tau_acc)
+            if use_sur and sur_mode == 1:
+                # 3x3 coarse block (fine-cell area 9*sur_k^2) minus the fine centre
+                ky = cy // sur_k; kx = cx // sur_k
+                rk = 0.0; ak = 0.0; nk = 0
+                for dy in range(-1, 2):
+                    yy = ky + dy
+                    if yy < 0 or yy >= Hk:
+                        continue
+                    for dx in range(-1, 2):
+                        xx = kx + dx
+                        if xx < 0 or xx >= Wk:
+                            continue
+                        rk += RK[yy, xx] * np.exp(-(ti - RK_t[yy, xx]) / tau_acc)
+                        ak += AK[yy, xx] * np.exp(-(ti - AK_t[yy, xx]) / tau_acc)
+                        nk += 1
+                rs = max(0.0, rk - rc); as_ = max(0.0, ak - ac)   # ring approx.: block minus centre
+                ns = nk * sur_k * sur_k - nc
             score = rc
             if use_sur and ns > 0:
                 score = rc - (k_inh * rs + k_act * as_) * nc / ns
@@ -419,6 +470,11 @@ def _run(x, y, t, p, P):
                             ti - tr_t0[k] >= T_conf and tr_dmax[k] >= D_min:
                         tr_conf[k] = True
                         n_confirm += 1
+                    if tr_conf[k] and not tr_static[k]:
+                        trk_t[n_trk] = ti; trk_uid[n_trk] = tr_uid[k]
+                        trk_x[n_trk] = tr_x[k]; trk_y[n_trk] = tr_y[k]
+                        trk_vx[n_trk] = tr_vx[k]; trk_vy[n_trk] = tr_vy[k]
+                        n_trk += 1
                 else:
                     # spawn: free slot, else replace stalest unconfirmed track
                     slot = -1
@@ -439,6 +495,7 @@ def _run(x, y, t, p, P):
                         tr_hits[k] = 1; tr_t0[k] = ti; tr_x0[k] = xi; tr_y0[k] = yi
                         tr_dmax[k] = 0.0
                         tr_cx[k] = xi; tr_cy[k] = yi; tr_ct[k] = ti; tr_static[k] = False
+                        tr_uid[k] = uid_next; uid_next += 1
                         assign[i] = 100 + k
             # ---- 6. labelling
             if ((not lab_baf) or baf) and not glare:
@@ -455,7 +512,8 @@ def _run(x, y, t, p, P):
         else:
             pred[i] = cand
 
-    return pred, baf_out, resp_out, cand_out, n_confirm, assign
+    return (pred, baf_out, resp_out, cand_out, n_confirm, assign,
+            trk_t[:n_trk], trk_uid[:n_trk], trk_x[:n_trk], trk_y[:n_trk], trk_vx[:n_trk], trk_vy[:n_trk])
 
 
 def run(seq_or_arrays, params: Params):
@@ -466,9 +524,10 @@ def run(seq_or_arrays, params: Params):
     else:
         x, y, t, p = seq_or_arrays
     P = np.array([float(getattr(params, k)) for k in KEYS], dtype=np.float64)
-    pred, baf, resp, cand, nconf, assign = _run(
+    pred, baf, resp, cand, nconf, assign, tt, tu, tx, ty, tvx, tvy = _run(
         np.ascontiguousarray(x, np.int64), np.ascontiguousarray(y, np.int64),
         np.ascontiguousarray(t, np.int64), np.ascontiguousarray(p, np.int64), P)
     return {"pred": pred.astype(bool), "baf": baf.astype(bool),
             "resp": resp.astype(bool), "cand": cand.astype(bool), "n_confirm": int(nconf),
-            "assign": assign}
+            "assign": assign,
+            "tracks": {"t_us": tt, "uid": tu, "x": tx, "y": ty, "vx": tvx, "vy": tvy}}

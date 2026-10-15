@@ -1,6 +1,6 @@
 // =============================================================================
 // tb_axi4s_to_aer.v
-// Testbench for axi4s_to_aer.v  —  LIBELLULA Core v25
+// Testbench for axi4s_to_aer.v  —  LIBELLULA Core v26
 //
 // Test plan (7 cases):
 //   1. IDLE         : no s_axis_tvalid; verify aer_req stays low for 10 cycles

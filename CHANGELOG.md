@@ -1,5 +1,22 @@
 # Changelog
 
+## v26 — 2026-10-14
+
+`stmd/` engineering round: held-out protocol, track-level metrics, two operating points, a fixed-point C reference, a cheaper surround, and the first RTL for the small-target front end. **The v22 core pipeline (`rtl/libellula_*`) is unchanged.** `test` was neither used for decisions nor scored.
+
+- **Protocol.** New held-out split of 20 `train` sequences, stratified by raw-data statistics (`stmd/splits/holdout_v26.txt`). All tuning on the other 79 `train` sequences plus `val`; the held-out split scored once per variant. Fixed `tune.py`: base-config keys absent from the search space were dropped (this re-enabled ESTMD in v25 without notice).
+- **Track-level metrics** (`stmd/libstmd/trackmetrics.py`, `stmd/docs/TRACK_METRICS.md`): target detection rate, time to first detection, window coverage, false tracks per minute, false-track time, localisation error. The model now emits a confirmed-track log.
+- **Two operating points** (held-out split, 95 % intervals in `stmd/results/final_v26.json`):
+  - *segmentation* (`configs/v26_segmentation.json`, also `selected.json`): IoU 0.764, Pd 0.888, 20.6 false tracks/min. Statistically indistinguishable from v25 (0.761 / 0.899 / 16.5).
+  - *alarm* (`configs/v26_alarm.json`): 3.0 false tracks/min (budget 2), target detection 0.80, window coverage 0.645. The reduction in false tracks is paid for on the dense-noise sequences, where coverage drops to 0.09–0.24.
+- **Ablations** (no re-tune): glare adaptation carries precision on the segmentation point (IoU 0.764 → 0.553 without it); noise adaptation raises detection on both points at a false-track cost; `lab_requires_baf` lifts precision 0.78 → 0.96 on the alarm point for 0.04 Pd.
+- **Fixed-point C reference** (`stmd/cref/stmd_ref.c`, `stmd/docs/CREF.md`): integer-only, documented widths, telescoping table decays, rate tables instead of per-event divisions. 99.8 % label agreement with the Python model on the held-out split; pooled metrics within 0.004 IoU / 0.02 Pd. Two bugs caught by the equivalence test.
+- **Cheaper surround** (`sur_mode=1`): coarse 3×3 grid in place of the 9×9 ring; −0.006 IoU, −0.007 Pd without re-tuning; 164 → 40 accesses per response event.
+- **RTL** (`rtl/stmd_frontend.v`): per-pixel activity filter with noise adaptation, glare adaptation and flicker habituation. Bit-exact against the C model on 60 000 synthetic events (`make -C sim stmd_fe`); Verilator lint clean; Yosys 0.33 generic estimate for a 32×32 instance about 7 000 gates, 118 flip-flops, 10 memories (`stmd/results/yosys_stmd_frontend_32x32.log`). Not timed, not placed; needs a reset sweep and a timestamp sweep in hardware.
+- **Hardware budget at C widths:** about 1.0 MB of state at 346×260 (v25's 652 kB assumed 12-bit timestamps plus a sweep).
+- **CI:** new steps run the front-end lint and replay, build the C reference with `-Werror`, and regenerate the RTL vectors to check they match the committed ones.
+- **Skipped:** the learned causal baseline (no GPU).
+
 ## v25 — 2026-10-14
 
 `stmd/` reference model: glare and noise adaptation, re-tuned on EV-UAV `train` + `val`. **RTL behaviour is unchanged from v22**; the edits outside `stmd/` are this entry, the README section and version labels.

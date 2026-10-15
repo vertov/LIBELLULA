@@ -1,0 +1,9 @@
+train IoU       now=0.789468 stored=0.789468 ok
+train ACC       now=0.909843 stored=0.909843 ok
+train Pd        now=0.879515 stored=0.879515 ok
+train precision now=0.856469 stored=0.856469 ok
+val   IoU       now=0.837283 stored=0.837283 ok
+val   ACC       now=0.936968 stored=0.936968 ok
+val   Pd        now=0.888912 stored=0.888912 ok
+val   precision now=0.887259 stored=0.887259 ok
+REPRODUCED

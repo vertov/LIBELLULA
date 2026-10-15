@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-// Bounded-simulation formal properties bench for LIBELLULA Core v25.
+// Bounded-simulation formal properties bench for LIBELLULA Core v26.
 //
 // NOTE: Full SVA-based model checking requires SymbiYosys (sby).  This bench
 // uses a 50 000-cycle LFSR-driven pseudo-random stimulus and hierarchical
