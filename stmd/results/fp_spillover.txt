@@ -1,0 +1,12 @@
+# scripts/fp_spillover.py, v25 config (results/config_v25.json)
+## test dense-noise sequences (diagnostic only; no tuning)
+test_022.npz  IoU=0.505 ACC=0.858 Pd=0.782 prec=0.552 fc/w=10.50  FP=3806 within10px_of_target=0.21
+test_023.npz  IoU=0.592 ACC=0.816 Pd=0.833 prec=0.683 fc/w=6.36  FP=1665 within10px_of_target=0.59
+## train dense-noise sequences, v25
+train_093.npz IoU=0.595 ACC=0.806 Pd=0.771 prec=0.695 fc/w=7.55  FP=2174 within10px_of_target=0.43
+train_097.npz IoU=0.602 ACC=0.719 Pd=0.731 prec=0.787 fc/w=5.11  FP=1233 within10px_of_target=0.59
+train_098.npz IoU=0.644 ACC=0.784 Pd=0.699 prec=0.782 fc/w=4.16  FP=994 within10px_of_target=0.57
+## train dense-noise sequences, v25 + {"lab_requires_baf": true}
+train_093.npz IoU=0.474 ACC=0.522 Pd=0.719 prec=0.838 fc/w=1.06  FP=619 within10px_of_target=0.13
+train_097.npz IoU=0.529 ACC=0.549 Pd=0.698 prec=0.935 fc/w=0.80  FP=240 within10px_of_target=0.63
+train_098.npz IoU=0.554 ACC=0.578 Pd=0.682 prec=0.929 fc/w=0.53  FP=201 within10px_of_target=0.54
