@@ -1,10 +1,11 @@
 # LIBELLULA-STMD: event-driven small-target detector (Python reference model)
 
-A causal, per-event detector for tiny moving targets in event-camera (DVS) streams. It reuses LIBELLULA's ideas (activity filter, per-pixel timestamp state, tracker pool, α-β update) and adds stages taken from insect small-target-motion-detector (STMD) work. It is a software reference only; no RTL implements it yet.
+A causal, per-event detector for tiny moving targets in event-camera (DVS) streams. It reuses LIBELLULA's ideas (activity filter, per-pixel timestamp state, tracker pool, α-β update) and adds stages taken from insect small-target-motion-detector (STMD) work. The Python model is the design reference; a fixed-point C port and two Verilog modules (front end and back end) implement the whole pipeline bit-exact against it.
 
-**Status (v26).** Evaluated on the EV-UAV dataset (DAVIS346, static camera, tiny drones).
+**Status (v27).** Evaluated on the EV-UAV dataset (DAVIS346, static camera, tiny drones).
 - v24 was tuned on `val` only; v25 added glare and noise adaptation and was tuned on `train` + `val`. `test` was scored once for each.
 - v26 does not touch `test`. It introduces a new held-out split (20 `train` sequences, `splits/holdout_v26.txt`), track-level metrics, two operating points tuned on the other 79 `train` sequences plus `val`, a fixed-point C reference, a cheaper surround, and a per-pixel front-end RTL module verified bit-exact against the C model. See "v26 results" below.
+- v27 completes the RTL: `rtl/stmd_backend.v` implements stages 3–6 and the chained pipeline matches the C model on every candidate flag, every label and every track record of 88 000 replayed events. The C model and both modules lost their last per-event divisions (power-of-two decay buckets and rate tables; one sequential divider remains for the velocity measurement, at most every 50 ms per track), gained an explicit expiry rule for 16-bit timestamps and the reset and stale sweeps that make them deployable. A third operating point, `v27_segmentation_ft`, trades 0.05 Pd for 4.6× fewer false tracks. `test` is still untouched. See "v27 results" below.
 
 ## Pipeline (libstmd/model.py)
 
@@ -20,7 +21,27 @@ A causal, per-event detector for tiny moving targets in event-camera (DVS) strea
 | 8. Noise adaptation (v25) | a global background-rate estimate shortens the stage-1 window, requires 2 supporting neighbours above `r_hi`, and raises the candidate threshold | gain control |
 | 9. Coarse surround (v26, optional) | `sur_mode=1`: a second accumulator grid of `sur_k`×`sur_k` cells; surround = 3×3 coarse block minus the fine centre, 9 reads instead of 72 | — |
 
-Stages 1, 2, 7 and 8 exist in Verilog (`rtl/stmd_frontend.v`), bit-exact against the C reference.
+Stages 1, 2, 7 and 8 exist in Verilog as `rtl/stmd_frontend.v`, stages 3–6 as `rtl/stmd_backend.v`; chained, they are bit-exact against the C reference (`make -C sim stmd_pipe`). Stage 9 (coarse surround) is not in RTL.
+
+## v27 results (held-out split, scored once; `scripts/final_eval_v27.py`, `results/final_v27.json`)
+
+`v27_segmentation_ft` is a local refinement of the v26 segmentation point under the `seg_ft` objective (IoU + Pd − 0.01 × false tracks per minute), 250 configurations on train(79) + val (`scripts/search_v27_segft.sh`). Three parameters moved: `cell` 3→2, `H_min` 5→12, `w_estmd` 0.5→2.
+
+| Variant | IoU | Pd | precision | targets detected | window coverage | false tracks / min |
+|---|---:|---:|---:|---:|---:|---:|
+| v26 segmentation (`selected.json`) | 0.764 [0.68–0.84] | 0.888 [0.84–0.94] | 0.830 | 0.94 | 0.804 [0.70–0.92] | 20.6 [6.4–37.5] |
+| v26 segmentation, no ESTMD | 0.759 [0.68–0.84] | 0.878 [0.82–0.93] | 0.829 | 0.94 | 0.795 [0.68–0.90] | 20.6 [7.1–37.9] |
+| **v27 segmentation+ft** (`configs/v27_segmentation_ft.json`) | 0.807 [0.73–0.88] | 0.837 [0.75–0.92] | 0.909 | 0.88 | 0.744 [0.62–0.86] | 4.5 [1.5–8.3] |
+| v27 segmentation+ft, no ESTMD | 0.809 [0.74–0.88] | 0.834 [0.76–0.91] | 0.916 | 0.92 | 0.724 [0.61–0.85] | 4.1 [1.1–7.9] |
+
+- The false-track reduction (20.6 → 4.5 per minute) is outside the intervals; the IoU gain (+0.04) and the Pd loss (−0.05) are not. It sits between the v26 segmentation and alarm points and is the better choice when tracks, not event masks, are consumed. `selected.json` stays at the v26 segmentation point so the committed RTL vectors and parameter file are unchanged in meaning; switching the RTL to this point is a parameter-file regeneration (`cell`=2 doubles the cell count, 1.13 MB of state against 1.03 MB, `results/hw_v27_segmentation_ft.json`).
+- Switching the ESTMD stage off is inside the intervals on both points and removes the per-polarity timestamp memory: 1 027 → 654 kB at 346×260 (`results/hw_v26_segmentation_noestmd.json`). This is the cheapest hardware saving available and costs nothing measurable here; it was not re-tuned.
+
+### RTL back end and full pipeline (`rtl/stmd_backend.v`, `tb/tb_stmd_pipeline.v`)
+
+Stages 3–6 in Verilog-2001: ESTMD polarity correlation, the two cell-accumulator grids with telescoping decay, the 9×9 ring surround (two cycles per cell, 162 cycles), the eight-track pool with the α-β update, a 32-step restoring divider for the velocity measurement, confirmation, stationarity, spawn/replace, and labelling. `tb/tb_stmd_pipeline.v` chains the front end into it and replays the four vector scenes (88 000 events, `results/stmd_rtl_replay_v27.txt`): zero mismatches on the candidate flag, zero on the label, and the same number of confirmed-track records as the C model on every scene (1160 / 220 / 1355 / 4642). Verilator lint is clean for both modules. Worst-case cost is about 265 cycles for a candidate event that updates a track and about 20 for an event that fails the activity filter; at 200 MHz that is ≥ 0.75 M candidate events per second, far above the observed candidate rate (2.5 % of 12 k events/s on `val`). The surround loop is the throughput limit; the coarse surround of stage 9 is the known fix and is not implemented in RTL.
+
+Deployability items closed in v27, in both modules: a reset sweep clears every valid bit before `in_ready`; an idle-cycle sweep expires timestamps older than 4095 ms (one pixel, one cell and one track per idle cycle) so 16-bit timestamps never alias; the decay index is a shift; the noise-rate table index is a shift; the C model has the same expiry rule and matches the Python model as before (`results/c_equivalence_holdout_v27.txt`, 99.85 % of labels). The long-gap vector scene retraces the target path 65.54 s later so stale state is met at wrapped ages of 0–2000 ms; `make -C sim stmd_sweep_neg` strips the sweeps and shows 387 front-end and 33 back-end mismatches (`results/stmd_sweep_negative_v27.txt`), which is what makes the passing replay evidence rather than coincidence. Not done: timing, placement, power, or a sensor in the loop. Yosys 0.33 generic estimate for a 32×32 instance (`make -C sim stmd_be_synth`, `results/yosys_stmd_backend_32x32.log`): 82 247 cells, 763 flip-flops, 29 memories, about twelve times the front end, because the tracker arithmetic is written at the C model's 64-bit widths; narrowing to the ~40 bits the magnitudes need and sharing one multiplier across the FSM states is the obvious next reduction and was not done.
 
 ## v26 results (held-out split, 20 train sequences, 2.7 min of data)
 
@@ -69,7 +90,7 @@ Integer-only C99 port of the whole pipeline with documented widths; `cref/cref.p
 
 ### Front-end RTL (`rtl/stmd_frontend.v`, `tb/tb_stmd_frontend.v`)
 
-Per-pixel activity filter with noise adaptation, glare adaptation and flicker habituation in Verilog-2001, replaying 60 000 synthetic events from three scenes (`tb/vectors/stmd_fe/`, generated by `scripts/gen_fe_vectors.py` from the C model) with zero mismatches against the C flags (`make -C sim stmd_fe`). Verilator lint is clean (`make -C sim lint-stmd-fe`). Yosys 0.33 generic synthesis of a 32×32 instance (`make -C sim stmd_fe_synth`, `results/yosys_stmd_frontend_32x32.log`) gives about 7 000 generic gates, 118 flip-flops and 10 memories; this is an estimate from a generic library, not a timing or FPGA result. The per-pixel memories scale with the sensor: 51 bits per pixel for this module, about 560 kB at 346×260. The module needs a reset sweep of the valid bits in hardware (simulation initialises them), uses integer division by constants in two places, and does not implement the timestamp sweep that 16-bit ms timestamps need beyond 65 s.
+Per-pixel activity filter with noise adaptation, glare adaptation and flicker habituation in Verilog-2001, replaying 60 000 synthetic events from three scenes (v27 adds a fourth, long-gap scene) (`tb/vectors/stmd_fe/`, generated by `scripts/gen_fe_vectors.py` from the C model) with zero mismatches against the C flags (`make -C sim stmd_fe`). Verilator lint is clean (`make -C sim lint-stmd-fe`). Yosys 0.33 generic synthesis of a 32×32 instance (`make -C sim stmd_fe_synth`, `results/yosys_stmd_frontend_32x32.log`) gives about 7 000 generic gates, 118 flip-flops and 10 memories; this is an estimate from a generic library, not a timing or FPGA result. The per-pixel memories scale with the sensor: 51 bits per pixel for this module, about 560 kB at 346×260. In v26 the module needed a reset sweep of the valid bits, used integer division by constants in two places, and had no timestamp sweep; v27 closes all three (see above).
 
 ### Hardware budget at C-model widths (`scripts/hw_estimate.py`)
 
@@ -158,10 +179,13 @@ TRAIN_DIR=... VAL_DIR=... scripts/search_v26.sh                              # b
 python3 scripts/final_eval_v26.py path/to/EV-UAV/train                       # held-out scoring + ablations
 python3 scripts/c_equivalence.py configs/v26_segmentation.json path/to/EV-UAV/train --only splits/holdout_v26.txt
 python3 scripts/gen_fe_vectors.py configs/selected.json ../tb/vectors/stmd_fe 12000   # RTL vectors from the C model
-make -C ../sim stmd_fe lint-stmd-fe stmd_fe_synth                            # RTL replay, lint, Yosys estimate
+TRAIN_DIR=... VAL_DIR=... scripts/search_v27_segft.sh                        # v27 seg_ft refinement (≈1.5 h)
+python3 scripts/final_eval_v27.py path/to/EV-UAV/train                       # v27 held-out scoring (seg_ft, no-ESTMD)
+make -C ../sim lint-stmd-fe stmd_fe stmd_pipe stmd_sweep_neg                 # RTL lint, replays, negative sweep test
+make -C ../sim stmd_fe_synth stmd_be_synth                                   # Yosys generic estimates (slow)
 ```
 
-- `configs/selected.json` is v25 and `configs/selected_v24.json` is v24.
+- `configs/selected.json` is the v26 segmentation point; `selected_v25.json` and `selected_v24.json` are kept.
 - Search records (every configuration evaluated, with per-sequence counts) are in `results/search/*.jsonl.gz`.
 - The EV-UAV data is not included. It comes from github.com/ChenYichen9527/Ev-UAV, with files hosted on Google Drive or Baidu.
 

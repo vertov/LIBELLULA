@@ -1,6 +1,6 @@
 // =============================================================================
 // libellula_soc.v
-// LIBELLULA Core v26  —  AXI4-Stream SoC Integration Wrapper
+// LIBELLULA Core v27  —  AXI4-Stream SoC Integration Wrapper
 //
 // Self-contained plug-in IP for AXI4-S SoC fabrics (Xilinx/AMD, Intel/Altera).
 // Packages the full LIBELLULA tracking pipeline with:

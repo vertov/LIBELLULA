@@ -24,6 +24,11 @@ module tb_stmd_frontend;
 
   reg        in_valid = 0; wire in_ready;
   reg  [8:0] in_x = 0; reg [8:0] in_y = 0; reg in_pol = 0; reg [15:0] in_t = 0;
+  reg  [15:0] now_ms = 0;
+  // Real time is compressed: the bench advances now_ms by 1 every IDLE_PER_MS
+  // idle cycles between events, so the stale sweep gets a bounded share of
+  // idle cycles per ms of scene time (hardware has ~200 000 per ms).
+  localparam integer IDLE_PER_MS = 128;
   wire       out_valid, out_baf, out_hab, out_glare; wire [8:0] out_x, out_y; wire out_pol; wire [15:0] out_t, out_theta;
 
   localparam DIR = `FE_DIR;   // directory holding the table hex files, with trailing slash
@@ -33,7 +38,7 @@ module tb_stmd_frontend;
     .TBA_LUT({DIR, "tba_lut.hex"}), .NSUP_LUT({DIR, "nsup_lut.hex"}), .THETA_LUT({DIR, "theta_lut.hex"})
   ) dut (
     .clk(clk), .rst(rst), .in_valid(in_valid), .in_ready(in_ready),
-    .in_x(in_x), .in_y(in_y), .in_pol(in_pol), .in_t_ms(in_t),
+    .in_x(in_x), .in_y(in_y), .in_pol(in_pol), .in_t_ms(in_t), .now_ms(now_ms),
     .out_valid(out_valid), .out_x(out_x), .out_y(out_y), .out_pol(out_pol), .out_t_ms(out_t),
     .out_baf(out_baf), .out_hab(out_hab), .out_glare(out_glare), .out_theta_q4(out_theta)
   );
@@ -55,11 +60,22 @@ module tb_stmd_frontend;
     end
   end
 
+  integer gap, c;
+  reg [15:0] t_prev;
   initial begin
     #(20*T_NS) rst = 0;
     @(negedge clk);
+    while (!in_ready) @(negedge clk);          // reset sweep
+    t_prev = 16'd0;
     for (i = 0; i < n_vec; i = i + 1) begin
       w = vec[i];
+      gap = w[38:23] - t_prev;                  // 16-bit wrap-safe gap in ms
+      if (gap < 0) gap = gap + 65536;
+      for (c = 0; c < gap; c = c + 1) begin
+        repeat (IDLE_PER_MS) @(negedge clk);
+        now_ms <= now_ms + 16'd1;
+      end
+      t_prev = w[38:23];
       while (!in_ready) @(negedge clk);
       in_x <= w[8:0]; in_y <= w[20:12]; in_pol <= w[39]; in_t <= w[38:23]; in_valid <= 1;
       @(negedge clk); in_valid <= 0;
@@ -73,7 +89,7 @@ module tb_stmd_frontend;
   end
 
   initial begin
-    #(5_000_000 * T_NS);
+    #(40_000_000 * T_NS);
     $display("TIMEOUT"); $finish_and_return(1);
   end
 endmodule

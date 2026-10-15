@@ -64,11 +64,18 @@ jobs:
         run: |
           python3 benchmarks/run_benchmarks.py 2>&1 | tee bench.log
 
-      - name: STMD front-end RTL (lint + bit-exact replay against the C reference)
+      - name: STMD RTL (lint + bit-exact replay of front end and full pipeline against the C reference)
         run: |
           make -C sim -s lint-stmd-fe 2>&1 | tee stmd_fe_lint.log
           make -C sim -s stmd_fe 2>&1 | tee stmd_fe.log
           ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' stmd_fe.log
+          make -C sim -s stmd_pipe 2>&1 | tee stmd_pipe.log
+          ! grep -E '(^|[^A-Za-z])(FAIL|TIMEOUT)' stmd_pipe.log
+
+      - name: STMD stale sweeps are load-bearing (replays must fail without them)
+        run: |
+          make -C sim -s stmd_sweep_neg 2>&1 | tee stmd_sweep_neg.log
+          grep -q 'NEGATIVE TEST OK' stmd_sweep_neg.log
 
       - name: STMD reference model smoke test (synthetic, no dataset)
         run: |

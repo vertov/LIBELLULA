@@ -2,9 +2,14 @@
 reference on three synthetic scenes (no dataset needed):
   clean   one 5x5 dark target over sparse shot noise
   noisy   the same target over dense noise (1 ev/px/s)
-  glare   the target plus a flickering 48x48 blob at ~6 ev/px/s
+  glare   the target plus a flickering 32x32 blob at ~8 ev/px/s
+  longgap 68 s at very low noise: target in the first 2 s and again from
+          65.54 s, so state written at the start is read 65 536 + (4..2000)
+          ms later, inside every decay and coincidence window once the
+          16-bit ms timestamp has wrapped; this catches a missing stale sweep
+          in the front end and in the back end
 Each vector line is one 48-bit hex word:
-  [47:40] expected bits (bit0 baf, bit1 habituated, bit2 glare)
+  [47:40] expected bits (bit0 baf, bit1 habituated, bit2 glare, bit3 resp, bit4 cand, bit5 label)
   [39]    polarity   [38:23] t_ms   [22:12] y   [11:0] x
 Also writes the C tables (fe_params.vh, *.hex) for the chosen config.
 usage: gen_fe_vectors.py CONFIG.json OUT_DIR [N_EVENTS]   (clean: N, noisy and glare: 2N)"""
@@ -20,6 +25,21 @@ W, H = 346, 260
 def scene(kind, n_target_ms=2500, seed=1, bg_rate=0.1):
     rng = np.random.default_rng(seed)
     T = n_target_ms
+    if kind == "longgap":
+        T = 68_000
+        n_noise = int(bg_rate * W * H * T / 1000)
+        ev = [np.stack([rng.integers(0, W, n_noise), rng.integers(0, H, n_noise),
+                        rng.integers(0, T * 1000, n_noise), rng.integers(0, 2, n_noise)], 1)]
+        # second pass retraces the first path in the opposite direction, so the
+        # wrapped age of the stale state it meets runs through 0..2000 ms
+        for t0, x0, d in ((0, 60, 1), (65_540, 165, -1)):
+            for t in range(t0, t0 + 2000):
+                pos = int(x0 + d * 0.05 * (t - t0)); lead = pos + 5 if d > 0 else pos; trail = pos if d > 0 else pos + 5
+                for col, pol in ((lead, 0), (trail, 1)):
+                    if rng.random() < 0.6:
+                        yy = 120 + rng.integers(0, 5, 2)
+                        ev.append(np.stack([np.full(2, col), yy, t * 1000 + rng.integers(0, 1000, 2), np.full(2, pol)], 1))
+        ev = np.concatenate(ev); return ev[np.argsort(ev[:, 2], kind="stable")]
     n_noise = int(bg_rate * W * H * T / 1000)
     ev = [np.stack([rng.integers(0, W, n_noise), rng.integers(0, H, n_noise),
                     rng.integers(0, T * 1000, n_noise), rng.integers(0, 2, n_noise)], 1)]
@@ -51,11 +71,12 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as d:
         cfgp = os.path.join(d, "cfg.txt"); cref.write_config(cfg, cfgp)
         subprocess.check_call([cref.BIN, "--dump-tables", cfgp, out])
-    for kind, rate, n in (("clean", 0.1, nmax), ("noisy", 1.0, 2 * nmax), ("glare", 0.1, 2 * nmax)):
+    for kind, rate, n in (("clean", 0.1, nmax), ("noisy", 1.0, 2 * nmax), ("glare", 0.1, 2 * nmax), ("longgap", 0.003, 10 ** 9)):
         ev = scene(kind, bg_rate=rate)[:n]
-        s = Seq(ev); r = cref.run(s, cfg, frontend=True); fe = r["frontend"] & 7
-        t_ms = (s.t_us // 1000).astype(np.int64)
+        s = Seq(ev); r = cref.run(s, cfg, frontend=True)
+        fe = (r["frontend"] & 31) | (r["pred"].astype(np.uint8) << 5)    # bits 0-4 from C (baf, hab, glare, resp, cand); bit5 = label
+        t_ms = (s.t_us // 1000).astype(np.int64) & 0xFFFF   # 16-bit ms counter, as the hardware sees it
         word = (fe.astype(np.int64) << 40) | (s.p.astype(np.int64) << 39) | (t_ms << 23) | (s.y.astype(np.int64) << 12) | s.x.astype(np.int64)
         with open(os.path.join(out, f"fe_{kind}.hex"), "w") as fh:
             for w in word: fh.write(f"{w:012x}\n")
-        print(f"{kind}: {len(ev)} events, baf {((fe&1)>0).mean():.3f} hab {((fe&2)>0).mean():.3f} glare {((fe&4)>0).mean():.3f}")
+        print(f"{kind}: {len(ev)} events, baf {((fe&1)>0).mean():.3f} hab {((fe&2)>0).mean():.3f} glare {((fe&4)>0).mean():.3f} label {((fe&32)>0).mean():.3f} labels {int((fe&32>0).sum())} track_records {len(r['tracks']['uid'])}")

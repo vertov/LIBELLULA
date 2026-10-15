@@ -1,0 +1,17 @@
+{
+ "per_pixel_bits": 52,
+ "cells": 10092,
+ "glare_cells": 374,
+ "state_memory_kB": 653.8,
+ "events": 1424330,
+ "mean_event_rate_ev_per_s": 7546,
+ "peak_sequence_rate_ev_per_s": 48918,
+ "pass_rates": {
+  "baf": 0.196,
+  "response": 0.161,
+  "candidate": 0.0413
+ },
+ "mean_state_accesses_per_event": 48.6,
+ "accesses_per_response_event": 164,
+ "surround": "ring r=4"
+}

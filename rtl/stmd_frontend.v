@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 `default_nettype none
-// stmd_frontend — per-pixel front end of the small-target detector (v26).
+// stmd_frontend — per-pixel front end of the small-target detector (v26, sweeps and shifts v27).
 //
 // Implements, bit for bit, the four front-end functions of the fixed-point C
 // reference stmd/cref/stmd_ref.c (fe_noise, fe_glare, fe_baf, fe_habit):
@@ -24,19 +24,19 @@
 // Timing: one event at a time, 12 cycles per event (1 setup/read, 1 glare
 // write-back, 8 neighbour reads, 1 own-pixel update, 1 output). in_ready is
 // high in IDLE. At 200 MHz this is ~16 M events/s, well above DVS peak rates.
+// Idle cycles run the stale sweep.
 //
 // Memories are declared as reg arrays with asynchronous read. For an FPGA
 // the per-pixel arrays map to block RAM (one read, one write port); the
 // neighbour scan is already serialised so a single-port RAM suffices.
 //
 // Known simplifications, documented rather than hidden:
-//   - `/ BUCKET` and `/ RATE_STEP` are divisions by constants. A real
-//     implementation would use a reciprocal multiply or a power-of-two
-//     bucket; the C model and this RTL use exact integer division so that
-//     the table semantics are identical.
-//   - 16-bit ms timestamps wrap after 65.5 s; a deployment needs a periodic
-//     sweep that invalidates stale pixels (as the LIF scan does). Not
-//     implemented here; sequences in the benches are < 65 s.
+//   - Decay buckets and the rate bucket are powers of two (shifts); no
+//     dividers. The C model uses the same shifts.
+//   - 16-bit ms timestamps: an entry older than 4095 ms is expired at read
+//     time, and the idle-cycle sweep clears such entries so they can never
+//     alias after a 65.5 s wrap (the sweep needs NPIX idle cycles per ~60 s).
+//     After reset a full clearing sweep runs before in_ready rises.
 //   - Per-pixel storage: 16+1 (last event) + 16+16+2 (flip count, its
 //     reference time, last polarity + valid) = 51 bits/pixel.
 module stmd_frontend #(
@@ -60,6 +60,7 @@ module stmd_frontend #(
     input  wire [YW-1:0] in_y,
     input  wire          in_pol,
     input  wire [15:0]   in_t_ms,
+    input  wire [15:0]   now_ms,        // free-running ms counter for the stale-entry sweep
     output reg           out_valid,
     output reg  [XW-1:0] out_x,
     output reg  [YW-1:0] out_y,
@@ -136,25 +137,24 @@ module stmd_frontend #(
         end
     endfunction
 
-    // decay index and advance: idx = min(age,4095)/bucket ; returns {zero, idx, advance}
-    function [6:0] decay_idx;        // 7 bits: 0..127 valid, >=128 -> returns 127 with zero flag separately
-        input [15:0] now; input [15:0] tref; input [15:0] bucket;
+    // decay index: idx = age >> shift (bucket = 2^shift ms). An entry older
+    // than 4095 ms is EXPIRED (decay_zero = 1, state restarts from zero).
+    function [6:0] decay_idx;
+        input [15:0] now; input [15:0] tref; input [3:0] shift;
         reg [15:0] d; reg [15:0] q;
         begin
             d = now - tref;
-            if (d > 16'd4095) d = 16'd4095;
-            q = d / bucket;
+            q = d >> shift;
             decay_idx = (q >= 16'd128) ? 7'd127 : q[6:0];
         end
     endfunction
     function decay_zero;
-        input [15:0] now; input [15:0] tref; input [15:0] bucket;
+        input [15:0] now; input [15:0] tref; input [3:0] shift;
         reg [15:0] d; reg [15:0] q;
         begin
             d = now - tref;
-            if (d > 16'd4095) d = 16'd4095;
-            q = d / bucket;
-            decay_zero = (q >= 16'd128);
+            q = d >> shift;
+            decay_zero = (d > 16'd4095) || (q >= 16'd128);
         end
     endfunction
 
@@ -167,13 +167,23 @@ module stmd_frontend #(
     reg [3:0]  sup;
     reg [3:0]  step;                 // neighbour index 0..7
     reg [2:0]  st;
-    localparam [2:0] S_IDLE = 3'd0, S_SETUP = 3'd1, S_GLARE = 3'd2, S_NB = 3'd3, S_OWN = 3'd4, S_OUT = 3'd5;
+    localparam [2:0] S_RESET = 3'd6, S_IDLE = 3'd0, S_SETUP = 3'd1, S_GLARE = 3'd2, S_NB = 3'd3, S_OWN = 3'd4, S_OUT = 3'd5;
+    // Sweeps. After reset, S_RESET clears every valid bit (NPIX cycles) before
+    // in_ready rises. In every idle cycle thereafter the stale sweep visits
+    // one pixel and one glare cell and clears entries older than 4095 ms, so
+    // a 16-bit timestamp can never alias (the sweep must cover all entries
+    // in under ~60 s: NPIX idle cycles, i.e. 0.45 ms at 200 MHz for 346x260).
+    reg [31:0] sw_ptr;
+    reg [31:0] gsw_ptr;
     // registered copies of memory words (read in SETUP, used in GLARE/OWN) so
     // that no combinational block reads the large arrays
     reg [15:0] g_acc_r, g_t_r; reg g_v_r;
     reg [15:0] f_r, f_t_r; reg f_qv_r, f_lq_r;
 
     assign in_ready = (st == S_IDLE);
+    wire [15:0] sw_age  = now_ms - last_any[sw_ptr];
+    wire [15:0] swf_age = now_ms - flip_t[sw_ptr];
+    wire [15:0] gsw_age = now_ms - g_t[gsw_ptr];
 
     // neighbour offsets, 8-neighbourhood without centre, same order as C (dy outer, dx inner)
     reg signed [1:0] ndx, ndy;
@@ -204,41 +214,41 @@ module stmd_frontend #(
     reg  [23:0] ng_next; reg [15:0] ng_t_next; reg [6:0] ng_idx; reg ng_zero; reg [39:0] ng_mul; reg [23:0] ng_dec;
     reg  [23:0] rate_q; reg [5:0] rate_idx;
     always @(*) begin
-        ng_idx  = decay_idx(enow, ng_t, BUCKET_N);
-        ng_zero = decay_zero(enow, ng_t, BUCKET_N);
+        ng_idx  = decay_idx(enow, ng_t, SHIFT_N);
+        ng_zero = decay_zero(enow, ng_t, SHIFT_N);
         ng_mul  = ng_acc * lut_n[ng_idx];
         ng_dec  = ng_zero ? 24'd0 : ng_mul[39:16];
         if (!ng_valid) begin ng_dec = 24'd0; ng_t_next = enow; end
         else if (ng_zero) ng_t_next = enow;
-        else ng_t_next = ng_t + {9'd0, ng_idx} * BUCKET_N;
+        else ng_t_next = ng_t + ({9'd0, ng_idx} << SHIFT_N);
         ng_next = (ng_dec > 24'hFFFFEF) ? 24'hFFFFFF : ng_dec + 24'd16;
-        rate_q  = ng_next / RATE_STEP;
+        rate_q  = ng_next >> RATE_SHIFT;
         rate_idx = (rate_q >= 24'd64) ? 6'd63 : rate_q[5:0];
     end
 
     // ---- glare: next state from the registered word ----------------------
     reg [6:0] g_idx; reg g_zero; reg [31:0] g_mul; reg [16:0] g_dec; reg [15:0] g_next; reg [15:0] g_t_next;
     always @(*) begin
-        g_idx  = decay_idx(enow, g_t_r, BUCKET_G);
-        g_zero = decay_zero(enow, g_t_r, BUCKET_G);
+        g_idx  = decay_idx(enow, g_t_r, SHIFT_G);
+        g_zero = decay_zero(enow, g_t_r, SHIFT_G);
         g_mul  = g_acc_r * lut_g[g_idx];
         g_dec  = g_zero ? 17'd0 : {1'b0, g_mul[31:16]};
         if (!g_v_r) begin g_dec = 17'd0; g_t_next = enow; end
         else if (g_zero) g_t_next = enow;
-        else g_t_next = g_t_r + {9'd0, g_idx} * BUCKET_G;
+        else g_t_next = g_t_r + ({9'd0, g_idx} << SHIFT_G);
         g_next = (g_dec + 17'd16 > 17'd65535) ? 16'd65535 : g_dec[15:0] + 16'd16;
     end
 
     // ---- habituation: next state (own pixel) from the registered word ----
     reg [6:0] f_idx; reg f_zero; reg [31:0] f_mul; reg [16:0] f_dec; reg [16:0] f_sum; reg [15:0] f_next; reg [15:0] f_t_next;
     always @(*) begin
-        f_idx  = decay_idx(enow, f_t_r, BUCKET_FLIP);
-        f_zero = decay_zero(enow, f_t_r, BUCKET_FLIP);
+        f_idx  = decay_idx(enow, f_t_r, SHIFT_FLIP);
+        f_zero = decay_zero(enow, f_t_r, SHIFT_FLIP);
         f_mul  = f_r * lut_flip[f_idx];
         f_dec  = f_zero ? 17'd0 : {1'b0, f_mul[31:16]};
         if (!f_qv_r) begin f_dec = 17'd0; f_t_next = enow; end
         else if (f_zero) f_t_next = enow;
-        else f_t_next = f_t_r + {9'd0, f_idx} * BUCKET_FLIP;
+        else f_t_next = f_t_r + ({9'd0, f_idx} << SHIFT_FLIP);
         f_sum  = f_dec + ((f_qv_r && (f_lq_r != epol)) ? 17'd16 : 17'd0);
         f_next = (f_sum > 17'd65535) ? 16'd65535 : f_sum[15:0];
     end
@@ -246,7 +256,7 @@ module stmd_frontend #(
     // ---- FSM -------------------------------------------------------------
     always @(posedge clk) begin
         if (rst) begin
-            st <= S_IDLE; out_valid <= 1'b0; step <= 4'd0; sup <= 4'd0;
+            st <= S_RESET; out_valid <= 1'b0; step <= 4'd0; sup <= 4'd0; sw_ptr <= 32'd0; gsw_ptr <= 32'd0;
             ng_acc <= 24'd0; ng_t <= 16'd0; ng_valid <= 1'b0;
             ex <= {XW{1'b0}}; ey <= {YW{1'b0}}; epol <= 1'b0; enow <= 16'd0;
             g_acc_r <= 16'd0; g_t_r <= 16'd0; g_v_r <= 1'b0; f_r <= 16'd0; f_t_r <= 16'd0; f_qv_r <= 1'b0; f_lq_r <= 1'b0;
@@ -256,9 +266,22 @@ module stmd_frontend #(
         end else begin
             out_valid <= 1'b0;
             case (st)
+                S_RESET: begin
+                    any_valid[sw_ptr] <= 1'b0; q_valid[sw_ptr] <= 1'b0;
+                    if (sw_ptr < NG) g_valid[sw_ptr] <= 1'b0;
+                    if (sw_ptr == NPIX - 1) begin sw_ptr <= 32'd0; st <= S_IDLE; end
+                    else sw_ptr <= sw_ptr + 32'd1;
+                end
                 S_IDLE: if (in_valid) begin
                     ex <= in_x; ey <= in_y; epol <= in_pol; enow <= in_t_ms;
                     st <= S_SETUP;
+                end else begin
+                    // stale sweep: one pixel and one glare cell per idle cycle
+                    if (any_valid[sw_ptr] && sw_age > 16'd4095) any_valid[sw_ptr] <= 1'b0;
+                    if (q_valid[sw_ptr] && swf_age > 16'd4095) q_valid[sw_ptr] <= 1'b0;
+                    sw_ptr <= (sw_ptr == NPIX - 1) ? 32'd0 : sw_ptr + 32'd1;
+                    if (g_valid[gsw_ptr] && gsw_age > 16'd4095) g_valid[gsw_ptr] <= 1'b0;
+                    gsw_ptr <= (gsw_ptr == NG - 1) ? 32'd0 : gsw_ptr + 32'd1;
                 end
                 S_SETUP: begin
                     // stage 8: global rate and tables

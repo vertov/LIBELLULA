@@ -1,0 +1,8 @@
+per-event agreement (C == Python):
+  baf   0.9961
+  resp  0.9962
+  cand  0.9982
+  pred  0.9985
+pooled metrics:
+  py  IoU=0.764 ACC=0.906 Pd=0.888 prec=0.830 fc/w=1.40 | det=0.940 cov=0.804 ft/min=20.63 loc=0.9
+  C   IoU=0.762 ACC=0.905 Pd=0.880 prec=0.828 fc/w=1.44 | det=0.940 cov=0.812 ft/min=23.26 loc=0.9

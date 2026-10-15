@@ -35,6 +35,9 @@ def objective(r: dict, kind: str = None) -> float:
     kind = kind or os.environ.get("OBJECTIVE", "seg")
     if kind == "seg":
         return r["IoU"] + r["Pd"]
+    if kind == "seg_ft":
+        # segmentation objective with a false-track term: 0.01 per false track/min
+        return r["IoU"] + r["Pd"] - 0.01 * r["false_tracks_per_min"]
     if kind == "alarm":
         # track detection subject to a false-track budget (per minute of data);
         # configurations over budget are penalised in proportion
