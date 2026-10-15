@@ -485,7 +485,7 @@ test:
 
 # ---------- report ----------
 report: run-once
-	@echo "LIBELLULA v24: SIM REPORT" > build/REPORT.txt
+	@echo "LIBELLULA v25: SIM REPORT" > build/REPORT.txt
 	@date >> build/REPORT.txt
 	@echo "" >> build/REPORT.txt
 	@echo "Core benches (make run-once): 3 claim (x3) + 8 units + 20 scenarios + 3 hostile + 2 power + 2 diagnostic = 38 distinct benches" >> build/REPORT.txt
@@ -789,7 +789,7 @@ req_trace: | init
 toolchain_manifest: | init
 	@echo "=== TOOLCHAIN MANIFEST ==="
 	@{ \
-	  echo "LIBELLULA Core v24 — Toolchain Manifest"; \
+	  echo "LIBELLULA Core v25 — Toolchain Manifest"; \
 	  echo "Generated : $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	  echo ""; \
 	  echo "## Simulator"; \
@@ -838,7 +838,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	@cp build/lint.log                          build/eval_package/lint_clean.log 2>/dev/null || true
 	@cp build/sha256.txt                        build/eval_package/SHA256SUMS.txt 2>/dev/null || true
 	@{ \
-	  echo "# LIBELLULA Core v24 — Interface & Latency Specification"; \
+	  echo "# LIBELLULA Core v25 — Interface & Latency Specification"; \
 	  echo ""; \
 	  echo "## Top-level ports (libellula_top)"; \
 	  echo "| Port | Dir | Width | Description |"; \
@@ -870,7 +870,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  - No overflow/wraparound on x_hat/y_hat (ab_predictor clamps to [0, 2^XW-1])."; \
 	} > build/eval_package/interface_spec.md
 	@{ \
-	  echo "# LIBELLULA Core v24 — Latency Specification"; \
+	  echo "# LIBELLULA Core v25 — Latency Specification"; \
 	  echo ""; \
 	  echo "## Claim"; \
 	  echo "  Pipeline latency = 5 clock cycles, fixed, independent of scene."; \
@@ -898,7 +898,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  Expected stdout: LATENCY_CYCLES=5 and PASS."; \
 	} > build/eval_package/latency_spec.md
 	@{ \
-	  echo "# LIBELLULA Core v24 — Known Limits"; \
+	  echo "# LIBELLULA Core v25 — Known Limits"; \
 	  echo ""; \
 	  echo "Sourced from README §Current Status and Limitations."; \
 	  echo ""; \
@@ -930,7 +930,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 	  echo "  count under realistic clutter has not been characterised."; \
 	} > build/eval_package/known_limits.md
 	@{ \
-	  echo "# LIBELLULA Core v24 — Evaluation Package"; \
+	  echo "# LIBELLULA Core v25 — Evaluation Package"; \
 	  echo ""; \
 	  echo "Entry point for RTL evaluators."; \
 	  echo ""; \
@@ -983,7 +983,7 @@ package_eval: toolchain_manifest req_trace sha256 | init
 sha256: | init
 	@echo "=== SHA-256 CHECKSUMS ==="
 	@{ \
-	  echo "# LIBELLULA Core v24 — SHA-256 Checksums"; \
+	  echo "# LIBELLULA Core v25 — SHA-256 Checksums"; \
 	  echo "# Generated: $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	  echo ""; \
 	  echo "## RTL sources"; \
@@ -1014,9 +1014,9 @@ sha256: | init
 tag_release: sha256 toolchain_manifest | init
 	@echo "=== TAG RELEASE ==="
 	@RTL_HASH=$$(shasum -a 256 $(RTL) | shasum -a 256 | awk '{print $$1}'); \
-	 TAG="v24-release-$$(date -u '+%Y%m%d-%H%M')"; \
+	 TAG="v25-release-$$(date -u '+%Y%m%d-%H%M')"; \
 	 { \
-	   echo "LIBELLULA Core v24 — Release Tag"; \
+	   echo "LIBELLULA Core v25 — Release Tag"; \
 	   echo "Tag      : $$TAG"; \
 	   echo "Date     : $$(date -u '+%Y-%m-%d %H:%M UTC')"; \
 	   echo "RTL hash : $$RTL_HASH  (SHA-256 of all RTL sources combined)"; \

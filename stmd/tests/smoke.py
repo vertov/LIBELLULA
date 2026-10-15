@@ -36,7 +36,7 @@ late = t > 500_000           # allow 0.5 s for track confirmation
 recall = (pred & g & late).sum() / max(1, (g & late).sum())
 precision = (pred & g).sum() / max(1, pred.sum())
 print(f"smoke: events={len(t)} target={g.sum()} recall(after 0.5 s)={recall:.2f} precision={precision:.2f}")
-# Thresholds mark clear breakage only (seeded run gives recall ~0.58, precision ~0.99).
+# Thresholds mark clear breakage only, not performance.
 ok = recall > 0.4 and precision > 0.9
 print("PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

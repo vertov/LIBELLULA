@@ -1,0 +1,3 @@
+obj=1.680 IoU=0.798 ACC=0.915 Pd=0.881 prec=0.862 fc/w=1.40
+obj=1.677 IoU=0.794 ACC=0.917 Pd=0.883 prec=0.856 fc/w=1.42
+obj=1.677 IoU=0.792 ACC=0.908 Pd=0.885 prec=0.862 fc/w=1.41

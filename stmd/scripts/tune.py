@@ -36,6 +36,16 @@ SPACE = {
     "T_lab_ms": [50, 100, 200, 400, 600, 800],
     "lab_requires_baf": [False, True],
     "k_vlab": [0, 0.5, 1],
+    "use_glare": [True],
+    "g_cell": [4, 8, 16],
+    "tau_g_ms": [500, 1000, 2000, 4000],
+    "G_rate": [1, 1.5, 2, 3, 4, 6],
+    "use_noise_adapt": [True, False],
+    "tau_n_ms": [200, 500, 1000],
+    "r0": [0.05, 0.1, 0.2, 0.4, 0.8],
+    "r_hi": [0.2, 0.3, 0.5, 0.8, 100],
+    "n_sup_hi": [2, 3],
+    "r_theta": [0.25, 0.5, 1, 2, 100],
 }
 
 SEQS = None
@@ -43,7 +53,7 @@ SEQS = None
 
 def _init(folder):
     global SEQS
-    SEQS = data.load_dir(folder)
+    SEQS = [s for f in folder.split(":") for s in data.load_dir(f)]   # colon-separated folders
 
 
 def evaluate(cfg):
