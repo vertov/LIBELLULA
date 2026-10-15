@@ -7,11 +7,14 @@
  *                  per-pixel timestamps are 16-bit ms; ages saturate at 4095 ms
  *                  (12 bits), which is what the hardware budget assumes.
  *   - decays:      exp(-dt/tau) replaced by a 128-entry Q16 table indexed by
- *                  whole buckets of round(tau/16) ms elapsed since the
- *                  accumulator's reference time; the reference time advances
- *                  by exactly the buckets applied, so the remainder carries
- *                  over (exact at ms resolution, no under-decay at high
- *                  event rates). dt >= 128 buckets -> 0.
+ *                  whole buckets of 2^shift ms (2^shift ~ tau/16) elapsed
+ *                  since the accumulator's reference time; the reference time
+ *                  advances by exactly the buckets applied, so the remainder
+ *                  carries over (no under-decay at high event rates). Any
+ *                  entry older than 4095 ms is expired (reads as zero /
+ *                  invalid); the hardware sweep enforces this before 16-bit
+ *                  timestamps can alias. No divisions: buckets and the rate
+ *                  bucket are powers of two.
  *   - accumulators (flip count, cell response/activity, glare, global rate):
  *                  unsigned Q12.4 (16 bits) — one event adds 16.
  *   - weights (k_inh, k_act, w_estmd, theta, G_rate, F_max, alpha, vbeta):
@@ -54,37 +57,45 @@
 #define MAX_TRACKS 32
 
 typedef struct {
-    uint32_t bucket_ms;        /* max(1, round(tau_ms / 16)) */
-    uint16_t lut[LUT_N];       /* Q16 exp(-k * bucket_ms / tau_ms) */
+    uint32_t shift;            /* bucket = 2^shift ms, 2^shift ~ tau/16 */
+    uint16_t lut[LUT_N];       /* Q16 exp(-k * 2^shift / tau_ms) */
 } decay_t;
 
 static void decay_init(decay_t *d, double tau_ms) {
-    d->bucket_ms = (uint32_t)llround(tau_ms / 16.0); if (d->bucket_ms == 0) d->bucket_ms = 1;
-    for (int k = 0; k < LUT_N; k++) {
-        double v = exp(-(double)k * d->bucket_ms / tau_ms) * 65536.0;
-        d->lut[k] = (uint16_t)(v > 65535.0 ? 65535 : llround(v));
+    double k = log2(tau_ms / 16.0); d->shift = k < 0 ? 0 : (uint32_t)llround(k);
+    double bucket = (double)(1u << d->shift);
+    for (int k2 = 0; k2 < LUT_N; k2++) {
+        double v = exp(-(double)k2 * bucket / tau_ms) * 65536.0;
+        d->lut[k2] = (uint16_t)(v > 65535.0 ? 65535 : llround(v));
     }
 }
+/* All time differences are 16-bit (ms) with wrap. An entry whose age exceeds
+ * AGE_MAX (4095 ms) is EXPIRED: it reads as invalid / zero. The hardware's
+ * background sweep clears such entries before the 16-bit timestamp can
+ * alias (it must visit every entry at least once per ~60 s), so this
+ * read-time rule and the sweep agree exactly. */
+/* C keeps full-width timestamps so that "age" is the true age; the RTL keeps
+ * 16-bit ones plus a sweep, and the two agree as long as the sweep runs. */
+static inline uint32_t age16(uint32_t now, uint32_t last) { return now - last; }
 /* Lazy, telescoping decay: apply exp(-idx*bucket/tau) for the whole buckets
- * elapsed since *t_ref, then advance *t_ref by exactly that amount, so the
- * remainder is carried to the next call (exact at ms resolution). */
-static inline uint32_t decay_step(const decay_t *d, uint32_t v, uint32_t now, uint16_t *t_ref) {
-    uint32_t dt = now - *t_ref;
-    if (dt > AGE_MAX) dt = AGE_MAX;
-    uint32_t idx = dt / d->bucket_ms;
-    if (idx >= LUT_N) { *t_ref = (uint16_t)now; return 0; }
-    *t_ref = (uint16_t)(*t_ref + idx * d->bucket_ms);
+ * (power of two) elapsed since *t_ref, then advance *t_ref by exactly that
+ * amount, so the remainder is carried to the next call. */
+static inline uint32_t decay_step(const decay_t *d, uint32_t v, uint32_t now, uint32_t *t_ref) {
+    uint32_t dt = age16(now, *t_ref);
+    uint32_t idx = dt >> d->shift;
+    if (dt > AGE_MAX || idx >= LUT_N) { *t_ref = now; return 0; }
+    *t_ref = *t_ref + (idx << d->shift);
     return (uint32_t)(((uint64_t)v * d->lut[idx]) >> 16);
 }
 /* read-only peek (no state change) */
-static inline uint32_t decay_peek(const decay_t *d, uint32_t v, uint32_t now, uint16_t t_ref) {
-    uint32_t dt = now - t_ref; if (dt > AGE_MAX) dt = AGE_MAX;
-    uint32_t idx = dt / d->bucket_ms;
-    return idx >= LUT_N ? 0 : (uint32_t)(((uint64_t)v * d->lut[idx]) >> 16);
+static inline uint32_t decay_peek(const decay_t *d, uint32_t v, uint32_t now, uint32_t t_ref) {
+    uint32_t dt = age16(now, t_ref);
+    uint32_t idx = dt >> d->shift;
+    return (dt > AGE_MAX || idx >= LUT_N) ? 0 : (uint32_t)(((uint64_t)v * d->lut[idx]) >> 16);
 }
 static inline uint32_t age_ms(uint32_t now, uint32_t last, int valid) {
     if (!valid) return AGE_MAX;
-    uint32_t a = now - last;
+    uint32_t a = age16(now, last);
     return a > AGE_MAX ? AGE_MAX : a;
 }
 
@@ -124,7 +135,7 @@ typedef struct {
     /* stage 7 */
     int use_glare, gcs, Hg, Wg; decay_t d_g; uint32_t G_thr_q4;
     /* stage 8 */
-    int use_noise; decay_t d_n; uint32_t rate_step_q4; uint32_t tba_lut[RATE_N], theta_lut[RATE_N]; uint8_t nsup_lut[RATE_N];
+    int use_noise; decay_t d_n; uint32_t rate_shift; uint32_t tba_lut[RATE_N], theta_lut[RATE_N]; uint8_t nsup_lut[RATE_N];
     uint32_t r_hi_idx; int n_sup_hi;
 } params_t;
 
@@ -169,13 +180,13 @@ static void params_init(params_t *P, const kv_t *c) {
     P->use_noise = cfg_get(c, "use_noise_adapt", 0) > 0.5;
     { double tau_n = cfg_get(c, "tau_n_ms", 500); decay_init(&P->d_n, tau_n);
       double N_norm = (tau_n / 1000.0) * W * H;              /* events per unit rate */
-      double rate_max = 4.0;                                   /* ev/px/s covered by the tables */
-      P->rate_step_q4 = (uint32_t)llround(rate_max / RATE_N * N_norm * Q4);
-      if (P->rate_step_q4 == 0) P->rate_step_q4 = 1;
+      double rate_max = 4.0;                                   /* ev/px/s covered by the tables (nominal) */
+      double stepq = rate_max / RATE_N * N_norm * Q4;          /* Q4 accumulator units per bucket */
+      P->rate_shift = stepq < 1 ? 0 : (uint32_t)llround(log2(stepq));   /* power-of-two bucket */
       double r0 = cfg_get(c, "r0", 0.2), r_hi = cfg_get(c, "r_hi", 0.5), r_theta = cfg_get(c, "r_theta", 1.0);
       P->n_sup_hi = (int)cfg_get(c, "n_sup_hi", 2);
       for (int i = 0; i < RATE_N; i++) {
-          double rate = (i + 0.5) * rate_max / RATE_N;         /* bucket centre */
+          double rate = (i + 0.5) * (double)(1u << P->rate_shift) / (N_norm * Q4);   /* bucket centre, ev/px/s */
           P->tba_lut[i] = (uint32_t)llround(P->T_ba / (1.0 + rate / r0));
           P->theta_lut[i] = (uint32_t)llround(cfg_get(c, "theta", 3) * (1.0 + rate / r_theta) * Q4);
           P->nsup_lut[i] = rate > r_hi ? (uint8_t)P->n_sup_hi : 1;
@@ -185,14 +196,14 @@ static void params_init(params_t *P, const kv_t *c) {
 
 /* ---- state ------------------------------------------------------------ */
 typedef struct {
-    uint16_t last_any[H][W]; uint8_t any_valid[H][W];
-    uint16_t last_pol[2][H][W]; uint8_t pol_valid[2][H][W];
+    uint32_t last_any[H][W]; uint8_t any_valid[H][W];
+    uint32_t last_pol[2][H][W]; uint8_t pol_valid[2][H][W];
     int8_t last_q[H][W];
-    uint16_t flips[H][W]; uint16_t flip_t[H][W];
-    uint16_t *R, *R_t, *A, *A_t;         /* Hc*Wc, Q12.4 and ms */
+    uint16_t flips[H][W]; uint32_t flip_t[H][W];
+    uint16_t *R, *A; uint32_t *R_t, *A_t; /* Hc*Wc, Q12.4 and ms */
     uint8_t *R_valid, *A_valid;
-    uint16_t *G, *G_t; uint8_t *G_valid; /* Hg*Wg */
-    uint32_t Ng; uint16_t Ng_t; uint8_t Ng_valid;
+    uint16_t *G; uint32_t *G_t; uint8_t *G_valid; /* Hg*Wg */
+    uint32_t Ng; uint32_t Ng_t; uint8_t Ng_valid;
     /* tracks */
     int on[MAX_TRACKS], conf[MAX_TRACKS], stat[MAX_TRACKS];
     int32_t x[MAX_TRACKS], y[MAX_TRACKS];          /* Q8 */
@@ -205,20 +216,20 @@ typedef struct {
 static state_t *state_new(const params_t *P) {
     state_t *S = calloc(1, sizeof *S);
     int nc = P->Hc * P->Wc, ng = P->Hg * P->Wg;
-    S->R = calloc(nc, 2); S->R_t = calloc(nc, 2); S->A = calloc(nc, 2); S->A_t = calloc(nc, 2);
+    S->R = calloc(nc, 2); S->R_t = calloc(nc, 4); S->A = calloc(nc, 2); S->A_t = calloc(nc, 4);
     S->R_valid = calloc(nc, 1); S->A_valid = calloc(nc, 1);
-    S->G = calloc(ng, 2); S->G_t = calloc(ng, 2); S->G_valid = calloc(ng, 1);
+    S->G = calloc(ng, 2); S->G_t = calloc(ng, 4); S->G_valid = calloc(ng, 1);
     memset(S->last_q, -1, sizeof S->last_q);
     return S;
 }
 
 /* Q12.4 accumulator update: decay (telescoping) then add w; saturate */
-static inline uint16_t acc_bump(const decay_t *d, uint16_t v, uint32_t now, uint16_t *t_ref, uint8_t *valid, uint32_t w) {
+static inline uint16_t acc_bump(const decay_t *d, uint16_t v, uint32_t now, uint32_t *t_ref, uint8_t *valid, uint32_t w) {
     uint32_t nv;
-    if (*valid) nv = decay_step(d, v, now, t_ref); else { nv = 0; *t_ref = (uint16_t)now; *valid = 1; }
+    if (*valid) nv = decay_step(d, v, now, t_ref); else { nv = 0; *t_ref = now; *valid = 1; }
     nv += w; return nv > 65535 ? 65535 : (uint16_t)nv;
 }
-static inline uint32_t acc_read(const decay_t *d, uint16_t v, uint32_t now, uint16_t t_ref, uint8_t valid) {
+static inline uint32_t acc_read(const decay_t *d, uint16_t v, uint32_t now, uint32_t t_ref, uint8_t valid) {
     return valid ? decay_peek(d, v, now, t_ref) : 0;
 }
 
@@ -228,10 +239,10 @@ static inline int fe_noise(const params_t *P, state_t *S, uint32_t now, uint32_t
     *T_ba_eff = P->T_ba; *n_sup = 1; *theta_eff = P->theta_q4;
     if (!P->use_noise) return -1;
     uint32_t v;
-    if (S->Ng_valid) v = decay_step(&P->d_n, S->Ng, now, &S->Ng_t); else { v = 0; S->Ng_t = (uint16_t)now; S->Ng_valid = 1; }
+    if (S->Ng_valid) v = decay_step(&P->d_n, S->Ng, now, &S->Ng_t); else { v = 0; S->Ng_t = now; S->Ng_valid = 1; }
     v += Q4; if (v > 0xFFFFFF) v = 0xFFFFFF;           /* 24-bit global accumulator */
     S->Ng = v;
-    uint32_t idx = v / P->rate_step_q4; if (idx >= RATE_N) idx = RATE_N - 1;
+    uint32_t idx = v >> P->rate_shift; if (idx >= RATE_N) idx = RATE_N - 1;
     *T_ba_eff = P->tba_lut[idx]; *n_sup = P->nsup_lut[idx]; *theta_eff = P->theta_lut[idx];
     return (int)idx;
 }
@@ -248,14 +259,14 @@ static inline int fe_baf(const params_t *P, state_t *S, int x, int y, uint32_t n
     for (int dy = -1; dy <= 1; dy++) { int yy = y + dy; if (yy < 0 || yy >= H) continue;
         for (int dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; int xx = x + dx; if (xx < 0 || xx >= W) continue;
             if (age_ms(now, S->last_any[yy][xx], S->any_valid[yy][xx]) <= T_ba_eff) sup++; } }
-    S->last_any[y][x] = (uint16_t)now; S->any_valid[y][x] = 1;
+    S->last_any[y][x] = now; S->any_valid[y][x] = 1;
     return sup >= n_sup;
 }
 /* Stage 2 (habituation): leaky polarity-reversal count */
 static inline int fe_habit(const params_t *P, state_t *S, int x, int y, uint32_t now, int q) {
     uint32_t f;
     if (S->last_q[y][x] >= 0) f = decay_step(&P->d_flip, S->flips[y][x], now, &S->flip_t[y][x]);
-    else { f = 0; S->flip_t[y][x] = (uint16_t)now; }
+    else { f = 0; S->flip_t[y][x] = now; }
     if (S->last_q[y][x] >= 0 && S->last_q[y][x] != q) f += Q4;
     if (f > 65535) f = 65535;
     S->flips[y][x] = (uint16_t)f; S->last_q[y][x] = (int8_t)q;
@@ -288,7 +299,7 @@ static int process(const params_t *P, state_t *S, const event_t *e, uint8_t *fe_
             if (P->e_gate) resp = corr; else { resp = 1; if (corr) wgt = Q4 + P->w_e_q4; }
         } else resp = 1;
     }
-    if (baf) { S->last_pol[q][yi][xi] = (uint16_t)now; S->pol_valid[q][yi][xi] = 1; }
+    if (baf) { S->last_pol[q][yi][xi] = now; S->pol_valid[q][yi][xi] = 1; }
 
     /* stage 4: cells + centre-surround */
     int cand = 0;
@@ -316,22 +327,22 @@ static int process(const params_t *P, state_t *S, const event_t *e, uint8_t *fe_
     /* stage 5: tracker */
     int pred = 0;
     if (!P->use_trk) return cand;
-    for (int k = 0; k < P->NT; k++) if (S->on[k] && now - S->tu[k] > P->T_dead) { S->on[k] = 0; S->conf[k] = 0; }
+    for (int k = 0; k < P->NT; k++) if (S->on[k] && age16(now, S->tu[k]) > P->T_dead) { S->on[k] = 0; S->conf[k] = 0; }
     if (cand) {
         int best = -1; int64_t bd = INT64_MAX; int32_t xq = xi * Q8, yq = yi * Q8;
         for (int k = 0; k < P->NT; k++) { if (!S->on[k]) continue;
-            int32_t dt = (int32_t)(now - S->tu[k]);
+            int32_t dt = (int32_t)age16(now, S->tu[k]);
             int64_t px = S->x[k] + (((int64_t)S->vx[k] * dt) >> 8), py = S->y[k] + (((int64_t)S->vy[k] * dt) >> 8);
             int64_t d2 = (xq - px) * (xq - px) + (yq - py) * (yq - py);   /* Q16 px^2 */
             if (d2 < bd) { bd = d2; best = k; } }
         if (best >= 0 && bd <= P->gate2_q16) {
-            int k = best; int32_t dt = (int32_t)(now - S->tu[k]);
+            int k = best; int32_t dt = (int32_t)age16(now, S->tu[k]);
             int64_t px = S->x[k] + (((int64_t)S->vx[k] * dt) >> 8), py = S->y[k] + (((int64_t)S->vy[k] * dt) >> 8);
             S->x[k] = (int32_t)(px + (((int64_t)P->alpha_q8 * (xq - px)) >> 8));
             S->y[k] = (int32_t)(py + (((int64_t)P->alpha_q8 * (yq - py)) >> 8));
             S->tu[k] = now; S->hits[k]++;
-            if (now - S->at[k] >= P->vdt_ms) {
-                int32_t dta = (int32_t)(now - S->at[k]);
+            if (age16(now, S->at[k]) >= P->vdt_ms) {
+                int32_t dta = (int32_t)age16(now, S->at[k]);
                 int32_t vxm = (int32_t)(((int64_t)(S->x[k] - S->ax[k]) * Q8) / dta);   /* Q8 px * 2^8 / ms = Q16 px/ms */
                 int32_t vym = (int32_t)(((int64_t)(S->y[k] - S->ay[k]) * Q8) / dta);
                 S->vx[k] += (int32_t)(((int64_t)P->vbeta_q8 * (vxm - S->vx[k])) >> 8);
@@ -339,10 +350,10 @@ static int process(const params_t *P, state_t *S, const event_t *e, uint8_t *fe_
                 S->ax[k] = S->x[k]; S->ay[k] = S->y[k]; S->at[k] = now; }
             int64_t dd2 = (int64_t)(S->x[k] - S->x0[k]) * (S->x[k] - S->x0[k]) + (int64_t)(S->y[k] - S->y0[k]) * (S->y[k] - S->y0[k]);
             if (dd2 > S->dmax2[k]) S->dmax2[k] = dd2;
-            if (P->T_stat > 0 && now - S->ct[k] >= P->T_stat) {
+            if (P->T_stat > 0 && age16(now, S->ct[k]) >= P->T_stat) {
                 int64_t ds2 = (int64_t)(S->x[k] - S->cx[k]) * (S->x[k] - S->cx[k]) + (int64_t)(S->y[k] - S->cy[k]) * (S->y[k] - S->cy[k]);
                 S->stat[k] = ds2 < P->D_stat2_q16; S->cx[k] = S->x[k]; S->cy[k] = S->y[k]; S->ct[k] = now; }
-            if (!S->conf[k] && S->hits[k] >= P->H_min && now - S->t0[k] >= P->T_conf && S->dmax2[k] >= P->D_min2_q16) S->conf[k] = 1;
+            if (!S->conf[k] && S->hits[k] >= P->H_min && age16(now, S->t0[k]) >= P->T_conf && S->dmax2[k] >= P->D_min2_q16) S->conf[k] = 1;
             if (S->conf[k] && !S->stat[k] && ftrk)
                 fprintf(ftrk, "%lld %lld %d %d %d %d\n", (long long)e->t_us, (long long)S->uid[k], S->x[k], S->y[k], S->vx[k], S->vy[k]);
         } else {
@@ -358,8 +369,8 @@ static int process(const params_t *P, state_t *S, const event_t *e, uint8_t *fe_
     /* stage 6: labelling */
     if ((!P->lab_baf || baf) && !glare) {
         int32_t xq = xi * Q8, yq = yi * Q8;
-        for (int k = 0; k < P->NT; k++) { if (!(S->on[k] && S->conf[k] && !S->stat[k] && now - S->tu[k] <= P->T_lab)) continue;
-            int32_t dt = (int32_t)(now - S->tu[k]);
+        for (int k = 0; k < P->NT; k++) { if (!(S->on[k] && S->conf[k] && !S->stat[k] && age16(now, S->tu[k]) <= P->T_lab)) continue;
+            int32_t dt = (int32_t)age16(now, S->tu[k]);
             int64_t px = S->x[k] + (((int64_t)S->vx[k] * dt) >> 8), py = S->y[k] + (((int64_t)S->vy[k] * dt) >> 8);
             int64_t ex = P->R_lab_q8 + ((((int64_t)P->k_vlab_q8 * llabs(S->vx[k])) >> 8) * P->T_lab >> 8);
             int64_t ey = P->R_lab_q8 + ((((int64_t)P->k_vlab_q8 * llabs(S->vy[k])) >> 8) * P->T_lab >> 8);
@@ -388,15 +399,47 @@ static int dump_tables(const params_t *P, const char *dir) {
     fprintf(f, "localparam [15:0] T_BA_MS     = 16'd%u;\n", P->T_ba);
     fprintf(f, "localparam        USE_HAB     = %d;\n", P->use_hab);
     fprintf(f, "localparam [15:0] F_MAX_Q4    = 16'd%u;\n", P->F_max_q4);
-    fprintf(f, "localparam [15:0] BUCKET_FLIP = 16'd%u;\n", P->d_flip.bucket_ms);
+    fprintf(f, "localparam [3:0]  SHIFT_FLIP  = 4'd%u;\n", P->d_flip.shift);
     fprintf(f, "localparam        USE_GLARE   = %d;\n", P->use_glare);
     fprintf(f, "localparam        G_CELL      = %d;\n", P->gcs);
     fprintf(f, "localparam [15:0] G_THR_Q4    = 16'd%u;\n", P->G_thr_q4 > 65535 ? 65535 : P->G_thr_q4);
-    fprintf(f, "localparam [15:0] BUCKET_G    = 16'd%u;\n", P->d_g.bucket_ms);
+    fprintf(f, "localparam [3:0]  SHIFT_G     = 4'd%u;\n", P->d_g.shift);
     fprintf(f, "localparam        USE_NOISE   = %d;\n", P->use_noise);
-    fprintf(f, "localparam [15:0] BUCKET_N    = 16'd%u;\n", P->d_n.bucket_ms);
-    fprintf(f, "localparam [23:0] RATE_STEP   = 24'd%u;\n", P->rate_step_q4);
+    fprintf(f, "localparam [3:0]  SHIFT_N     = 4'd%u;\n", P->d_n.shift);
+    fprintf(f, "localparam [4:0]  RATE_SHIFT  = 5'd%u;\n", P->rate_shift);
+    fprintf(f, "// back end\n");
+    fprintf(f, "localparam        USE_ESTMD   = %d;\n", P->use_estmd);
+    fprintf(f, "localparam        E_GATE      = %d;\n", P->e_gate);
+    fprintf(f, "localparam        NBR         = %d;\n", P->nbr);
+    fprintf(f, "localparam [11:0] TMIN_MS     = 12'd%u;\n", P->tmin);
+    fprintf(f, "localparam [11:0] TMAX_MS     = 12'd%u;\n", P->tmax);
+    fprintf(f, "localparam [15:0] W_E_Q4      = 16'd%u;\n", P->w_e_q4);
+    fprintf(f, "localparam        CELL        = %d;\n", P->cs);
+    fprintf(f, "localparam        HC          = %d;\n", P->Hc);
+    fprintf(f, "localparam        WC          = %d;\n", P->Wc);
+    fprintf(f, "localparam [3:0]  SHIFT_ACC   = 4'd%u;\n", P->d_acc.shift);
+    fprintf(f, "localparam        USE_SUR     = %d;\n", P->use_sur);
+    fprintf(f, "localparam        SR          = %d;\n", P->sr);
+    fprintf(f, "localparam [15:0] K_INH_Q4    = 16'd%u;\n", P->k_inh_q4);
+    fprintf(f, "localparam [15:0] K_ACT_Q4    = 16'd%u;\n", P->k_act_q4);
+    fprintf(f, "localparam        USE_TRK     = %d;\n", P->use_trk);
+    fprintf(f, "localparam        NT          = %d;\n", P->NT);
+    fprintf(f, "localparam [47:0] GATE2_Q16   = 48'd%lld;\n", (long long)P->gate2_q16);
+    fprintf(f, "localparam [15:0] ALPHA_Q8    = 16'd%u;\n", P->alpha_q8);
+    fprintf(f, "localparam [15:0] VBETA_Q8    = 16'd%u;\n", P->vbeta_q8);
+    fprintf(f, "localparam [11:0] VDT_MS      = 12'd%u;\n", P->vdt_ms);
+    fprintf(f, "localparam [15:0] H_MIN       = 16'd%u;\n", P->H_min);
+    fprintf(f, "localparam [11:0] T_CONF_MS   = 12'd%u;\n", P->T_conf);
+    fprintf(f, "localparam [47:0] D_MIN2_Q16  = 48'd%lld;\n", (long long)P->D_min2_q16);
+    fprintf(f, "localparam [11:0] T_DEAD_MS   = 12'd%u;\n", P->T_dead);
+    fprintf(f, "localparam [11:0] T_STAT_MS   = 12'd%u;\n", P->T_stat);
+    fprintf(f, "localparam [47:0] D_STAT2_Q16 = 48'd%lld;\n", (long long)P->D_stat2_q16);
+    fprintf(f, "localparam [23:0] R_LAB_Q8    = 24'd%lld;\n", (long long)P->R_lab_q8);
+    fprintf(f, "localparam [11:0] T_LAB_MS    = 12'd%u;\n", P->T_lab);
+    fprintf(f, "localparam        LAB_BAF     = %d;\n", P->lab_baf);
+    fprintf(f, "localparam [15:0] K_VLAB_Q8   = 16'd%u;\n", P->k_vlab_q8);
     fclose(f);
+    DUMP("lut_acc.hex", LUT_N, "%04x", P->d_acc.lut[k]);
     return 0;
 }
 

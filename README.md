@@ -16,9 +16,9 @@ The implementation is Verilog-2001, vendor-neutral, and verified against a 23-re
 
 ---
 
-## Small-Target Detector (`stmd/`, `rtl/stmd_frontend.v`)
+## Small-Target Detector (`stmd/`, `rtl/stmd_frontend.v`, `rtl/stmd_backend.v`)
 
-`stmd/` holds a reference model that re-aims the LIBELLULA approach at the dragonfly's actual task: finding tiny moving targets. It processes events one at a time with the same building blocks as the core RTL (activity filter, per-pixel timestamps, tracker pool, α-β update) plus insect-style flicker habituation, centre-surround inhibition, regional glare adaptation and noise-adaptive filtering. v26 adds a fixed-point C reference of the whole pipeline and a Verilog module for the per-pixel front end (`rtl/stmd_frontend.v`) that matches the C model bit for bit on replayed events.
+`stmd/` holds a reference model that re-aims the LIBELLULA approach at the dragonfly's actual task: finding tiny moving targets. It processes events one at a time with the same building blocks as the core RTL (activity filter, per-pixel timestamps, tracker pool, α-β update) plus insect-style flicker habituation, centre-surround inhibition, regional glare adaptation and noise-adaptive filtering. v26 added a fixed-point C reference of the whole pipeline and a Verilog module for the per-pixel front end (`rtl/stmd_frontend.v`); v27 adds the back end (`rtl/stmd_backend.v`), so the whole detector now exists in Verilog and matches the C model bit for bit on 88 000 replayed events (every candidate flag, label and track record), with the reset and stale sweeps that 16-bit timestamps need and no per-event division.
 
 Evaluated on the public EV-UAV dataset (DAVIS346, static camera, tiny drones, per-event labels), with a port of the dataset authors' scorer and with track-level metrics.
 
@@ -27,6 +27,7 @@ Evaluated on the public EV-UAV dataset (DAVIS346, static camera, tiny drones, pe
 | **v26 held-out split** (20 `train` sequences never used for tuning) | | | | | |
 | segmentation point | 0.764 | 0.888 | 0.94 | 0.80 | 20.6 |
 | alarm point | 0.664 | 0.745 | 0.80 | 0.65 | 3.0 |
+| v27 segmentation+ft point | 0.807 | 0.837 | 0.88 | 0.74 | 4.5 |
 | v25 on the same split | 0.761 | 0.899 | 0.94 | 0.83 | 16.5 |
 | **EV-UAV `test`** (scored once for v25; not used since) | | | | | |
 | v25 | 0.813 | 0.902 | — | — | — |
@@ -34,8 +35,8 @@ Evaluated on the public EV-UAV dataset (DAVIS346, static camera, tiny drones, pe
 
 - **What holds up.** Centre-surround inhibition, the tracker and glare adaptation. Removing glare adaptation drops held-out IoU from 0.76 to 0.55.
 - **What does not.** Dense low-light noise. The alarm point meets a false-track budget mainly by giving up those scenes.
-- **ESTMD.** The dragonfly-specific polarity correlation contributes under 1 %.
-- **Hardware.** C-model widths give about 1 MB of state at 346×260; the front-end RTL is about 7 000 generic gates for a 32×32 instance (Yosys estimate), with per-pixel memory on top.
+- **ESTMD.** The dragonfly-specific polarity correlation contributes under 1 %; switching it off saves 373 kB of the 1 MB state with no measurable loss.
+- **Hardware.** C-model widths give about 1 MB of state at 346×260 (654 kB without ESTMD). The front-end RTL is about 7 000 generic gates for a 32×32 instance (Yosys estimate), with per-pixel memory on top; the back end is about 82 000 cells at C-model widths (unoptimised arithmetic). Not timed, placed or run against a sensor.
 
 Details, intervals, ablations and reproduction steps: [`stmd/README.md`](stmd/README.md), [`stmd/docs/CREF.md`](stmd/docs/CREF.md), [`stmd/docs/TRACK_METRICS.md`](stmd/docs/TRACK_METRICS.md).
 
@@ -66,7 +67,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Architecture
 
 ```
-                      LIBELLULA Core v26 — 6-Stage Synchronous Pipeline
+                      LIBELLULA Core v27 — 6-Stage Synchronous Pipeline
  ──────────────────────────────────────────────────────────────────────────────────
   AER Input          LIF Layer           Delay Lattice       Motion Detect
   ──────────         ──────────          ─────────────       ─────────────
@@ -98,7 +99,7 @@ All of these are synthesizable, use no floating-point hardware, and target FPGAs
 ## Repository Structure
 
 ```
-LIBELLULA_Core_v26/
+LIBELLULA_Core_v27/
 ├── rtl/
 │   ├── libellula_top.v          Top-level — core pipeline, all tuning parameters
 │   ├── libellula_soc.v          UAV SoC wrapper (AXI4-S in/out, 64-bit TDATA)
@@ -111,6 +112,7 @@ LIBELLULA_Core_v26/
 │   ├── ab_predictor.v           α-β predictor, Q8.8, outlier rejection, VEL_INIT, velocity zeroing on direction reversal
 │   ├── conf_gate.v              Confidence scoring
 │   ├── stmd_frontend.v          Small-target front end: per-pixel activity filter, glare, habituation (v26)
+│   ├── stmd_backend.v           Small-target back end: ESTMD, cells + surround, tracker pool, labelling (v27)
 │   ├── axi4s_to_aer.v           AXI4-Stream → AER bridge (SoC input)
 │   └── axi4s_pred_wrapper.v     Prediction → AXI4-Stream bridge (SoC output)
 │

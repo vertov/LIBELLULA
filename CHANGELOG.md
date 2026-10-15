@@ -1,5 +1,18 @@
 # Changelog
 
+## v27 — 2026-10-14
+
+`stmd/` engineering round: the rest of the small-target pipeline in RTL, the deployability items from v26 closed, one new operating point. **The v22 core pipeline (`rtl/libellula_*`) is unchanged.** `test` was neither used for decisions nor scored.
+
+- **Back-end RTL** (`rtl/stmd_backend.v`): ESTMD polarity correlation, cell accumulators with the 9×9 ring surround, the eight-track pool (α-β update, 32-step restoring divider for the velocity measurement, confirmation, stationarity, spawn/replace) and labelling. `tb/tb_stmd_pipeline.v` chains the front end into it. On the four vector scenes (88 000 events) the chained RTL matches the C reference on every candidate flag, every label and the number of confirmed-track records (`make -C sim stmd_pipe`, `stmd/results/stmd_rtl_replay_v27.txt`). Verilator lint clean. Worst case about 265 cycles per candidate event, dominated by the 162-cycle surround loop. Yosys 0.33 generic estimate for a 32×32 instance: 82 247 generic cells, 763 flip-flops, 29 memories (`stmd/results/yosys_stmd_backend_32x32.log`), against 7 085 cells for the front end; the five 64-bit multipliers of the tracker and the 64-bit score arithmetic dominate (about 28 000 XOR/XNOR cells) and are written at C widths, not narrowed or shared, so this is an upper bound for the arithmetic, and the ABC pass took about an hour. Not timed or placed.
+- **Division removal** (C model and both modules): decay tables are indexed by `age >> shift` with power-of-two buckets; noise-rate tables by `Ng >> rate_shift`; the only remaining division is the velocity measurement, at most once per 50 ms per track, done sequentially in RTL. C/Python agreement after the change: 99.85 % of labels on the held-out split, IoU 0.762 vs 0.764 (`stmd/results/c_equivalence_holdout_v27.txt`).
+- **16-bit timestamps made safe.** Explicit expiry rule (any entry older than 4095 ms reads as empty) in C and RTL; a reset sweep clears every valid bit before `in_ready`; an idle-cycle sweep expires one pixel, one cell and one track per idle cycle. The long-gap vector scene now retraces the target path 65.54 s later so stale state is met at wrapped ages of 0–2000 ms. `make -C sim stmd_sweep_neg` strips the sweeps and shows 387 front-end and 33 back-end mismatches (`stmd/results/stmd_sweep_negative_v27.txt`); it runs in CI and must fail.
+- **Vectors** (`tb/vectors/stmd_fe/`): the expected word now carries the C response and candidate bits and the label; `fe_params.vh` carries every back-end constant; `lut_acc.hex` added.
+- **Operating point** `configs/v27_segmentation_ft.json` (held-out split, scored once, `stmd/results/final_v27.json`): IoU 0.807, Pd 0.837, 4.5 false tracks/min against 0.764 / 0.888 / 20.6 for the v26 segmentation point. The false-track reduction is outside the 95 % intervals; the IoU and Pd changes are not. `selected.json` stays at the v26 segmentation point.
+- **Ablation.** ESTMD off is inside the intervals on both points (IoU 0.759 / 0.809) and cuts state from 1 027 to 654 kB at 346×260 (`stmd/results/hw_v26_segmentation_noestmd.json`).
+- **CI:** the chained replay and the negative sweep test are new steps; the lint step covers both modules.
+- **Not done:** coarse surround in RTL (the throughput fix), timing/placement/power, sensor-in-the-loop, the learned baseline (no GPU).
+
 ## v26 — 2026-10-14
 
 `stmd/` engineering round: held-out protocol, track-level metrics, two operating points, a fixed-point C reference, a cheaper surround, and the first RTL for the small-target front end. **The v22 core pipeline (`rtl/libellula_*`) is unchanged.** `test` was neither used for decisions nor scored.

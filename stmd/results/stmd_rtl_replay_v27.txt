@@ -1,0 +1,28 @@
+=== LINT: stmd_frontend ===
+LINT PASS: stmd_frontend zero warnings
+=== LINT: stmd_backend ===
+LINT PASS: stmd_backend zero warnings
+=== stmd_fe: clean ===
+STMD_FE vectors=12000 outputs=12000 mismatches=0
+PASS
+=== stmd_fe: noisy ===
+STMD_FE vectors=24000 outputs=24000 mismatches=0
+PASS
+=== stmd_fe: glare ===
+STMD_FE vectors=24000 outputs=24000 mismatches=0
+PASS
+=== stmd_fe: longgap ===
+STMD_FE vectors=27831 outputs=27831 mismatches=0
+PASS
+=== stmd_pipe: clean ===
+STMD_PIPE vectors=12000 outputs=12000 label_mismatches=0 cand_mismatches=0 labels=2217 track_records=1160
+PASS
+=== stmd_pipe: noisy ===
+STMD_PIPE vectors=24000 outputs=24000 label_mismatches=0 cand_mismatches=0 labels=397 track_records=220
+PASS
+=== stmd_pipe: glare ===
+STMD_PIPE vectors=24000 outputs=24000 label_mismatches=0 cand_mismatches=0 labels=2606 track_records=1355
+PASS
+=== stmd_pipe: longgap ===
+STMD_PIPE vectors=27831 outputs=27831 label_mismatches=0 cand_mismatches=0 labels=8990 track_records=4642
+PASS

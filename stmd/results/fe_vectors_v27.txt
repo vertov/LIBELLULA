@@ -1,0 +1,4 @@
+clean: 12000 events, baf 0.251 hab 0.000 glare 0.000 label 0.185 labels 2217 track_records 1160
+noisy: 24000 events, baf 0.127 hab 0.000 glare 0.000 label 0.017 labels 397 track_records 220
+glare: 24000 events, baf 0.555 hab 0.180 glare 0.031 label 0.109 labels 2606 track_records 1355
+longgap: 27831 events, baf 0.341 hab 0.000 glare 0.000 label 0.323 labels 8990 track_records 4642

@@ -1,0 +1,8 @@
+Build directory ready.
+=== stmd_sweep_neg: front end without sweeps (expect FAIL) ===
+STMD_FE vectors=27831 outputs=27831 mismatches=387
+FAIL: 387 mismatches
+=== stmd_sweep_neg: back end without sweeps (expect FAIL) ===
+STMD_PIPE vectors=27831 outputs=27831 label_mismatches=0 cand_mismatches=33 labels=8990 track_records=4661
+FAIL: 0 label / 33 candidate mismatches
+NEGATIVE TEST OK: both replays fail without the sweeps
