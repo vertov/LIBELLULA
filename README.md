@@ -38,7 +38,9 @@ Evaluated on the public EV-UAV dataset (DAVIS346, static camera, tiny drones, pe
 - **ESTMD.** The dragonfly-specific polarity correlation contributes under 1 %; switching it off saves 373 kB of the 1 MB state with no measurable loss.
 - **Hardware.** C-model widths give about 1 MB of state at 346×260 (654 kB without ESTMD). The front-end RTL is about 7 000 generic gates for a 32×32 instance (Yosys estimate), with per-pixel memory on top; the back end is about 82 000 cells at C-model widths (unoptimised arithmetic). Not timed, placed or run against a sensor.
 
-Details, intervals, ablations and reproduction steps: [`stmd/README.md`](stmd/README.md), [`stmd/docs/CREF.md`](stmd/docs/CREF.md), [`stmd/docs/TRACK_METRICS.md`](stmd/docs/TRACK_METRICS.md).
+![EV-UAV val_015 through the detector: grey events, red detector labels, green ground truth, yellow ring per confirmed-track update](stmd/results/demo_val_015.gif)
+
+To run it on a recording of your own: [`stmd/QUICKSTART.md`](stmd/QUICKSTART.md). Details, intervals, ablations and reproduction steps: [`stmd/README.md`](stmd/README.md), [`stmd/docs/CREF.md`](stmd/docs/CREF.md), [`stmd/docs/TRACK_METRICS.md`](stmd/docs/TRACK_METRICS.md).
 
 ---
 

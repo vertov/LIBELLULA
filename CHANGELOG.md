@@ -1,5 +1,14 @@
 # Changelog
 
+## v27.1 — 2026-10-15
+
+Usability only; no model, C or RTL change.
+
+- `stmd/scripts/demo.py`: runs the detector on one recording (EV-UAV `.npz` or any `x, y, t, p` arrays), writes per-event labels and the track log, renders an `.mp4`/`.gif` with events, detector labels, ground truth and confirmed tracks, and prints the EV-UAV scores when labels exist.
+- `stmd/QUICKSTART.md`: install, run, score, use your own data, which parameters matter and how to search them, and how to run the C and Verilog forms.
+- `stmd/results/demo_val_015.gif/.mp4`: six seconds of `val_015` (dense noise, sun glare, two drones), linked from both READMEs.
+- Throughput note: the Python model runs at about 4 M events/s and the C reference at about 3.4 M events/s on one 2.1 GHz Xeon core (`val`, six sequences), several hundred times faster than the recordings' event rate.
+
 ## v27 — 2026-10-14
 
 `stmd/` engineering round: the rest of the small-target pipeline in RTL, the deployability items from v26 closed, one new operating point. **The v22 core pipeline (`rtl/libellula_*`) is unchanged.** `test` was neither used for decisions nor scored.

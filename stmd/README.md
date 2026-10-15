@@ -1,5 +1,9 @@
 # LIBELLULA-STMD: event-driven small-target detector (Python reference model)
 
+![EV-UAV val_015: dense sensor noise, sun glare at the top, two drones. Grey: events; red: detector label; green: ground truth; yellow ring: confirmed track.](results/demo_val_015.gif)
+
+*Six seconds of EV-UAV `val_015` through the v26 segmentation point: 254 k events, dense noise, sun glare (muted, top centre), two drones. Grey events, red where the detector labels a target, green ground truth, yellow ring at each confirmed-track update. Made by `scripts/demo.py`; **[QUICKSTART.md](QUICKSTART.md)** runs it on your own recording in three commands.*
+
 A causal, per-event detector for tiny moving targets in event-camera (DVS) streams. It reuses LIBELLULA's ideas (activity filter, per-pixel timestamp state, tracker pool, α-β update) and adds stages taken from insect small-target-motion-detector (STMD) work. The Python model is the design reference; a fixed-point C port and two Verilog modules (front end and back end) implement the whole pipeline bit-exact against it.
 
 **Status (v27).** Evaluated on the EV-UAV dataset (DAVIS346, static camera, tiny drones).
