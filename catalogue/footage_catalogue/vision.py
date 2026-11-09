@@ -197,8 +197,12 @@ class SmolVLM:
         text = text.split("\n")[0].strip()
         if not text or _ECHO.search(text):
             return None, None
-        if text[-1] not in ".!?":
-            text += "."
+        # keep at most two complete sentences; drop a fragment cut off by the token limit
+        parts = re.split(r"(?<=[.!?])\s+", text)
+        keep = [p for p in parts[:2] if p and p[-1] in ".!?"]
+        if not keep:
+            keep = [text.rstrip(" ,;:") + "."]
+        text = " ".join(keep)
         return text[0].upper() + text[1:], None
 
 
