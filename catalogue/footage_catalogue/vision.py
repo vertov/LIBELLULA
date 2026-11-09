@@ -155,6 +155,10 @@ DESCRIBE_PROMPT = (
     "editing material (e.g. establishing shot, cutaway, reaction, texture, transition, B-roll). "
     "No preamble, no labels."
 )
+# Small local VLMs cannot follow the two-line instruction; they get one plain question and the
+# editorial reading is composed by rule from the description and the measured fields.
+SMOL_PROMPT = "Describe this film frame in one sentence: who or what is in it, where, and how it is framed."
+_ECHO = re.compile(r"one (plain )?sentence|describe this|film frame", re.I)
 
 
 def _split_two(text: str) -> tuple[str | None, str | None]:
@@ -180,15 +184,22 @@ class SmolVLM:
         self.name = cfg.vlm_model
 
     def describe(self, frames_bgr: list[np.ndarray]) -> tuple[str | None, str | None]:
+        """One frame, one short question.  Returns (description, None); the editorial line is rule-based."""
         from PIL import Image
-        imgs = [Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in frames_bgr]
-        content = [{"type": "image"} for _ in imgs] + [{"type": "text", "text": DESCRIBE_PROMPT}]
+        frame = frames_bgr[len(frames_bgr) // 2]
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        content = [{"type": "image"}, {"type": "text", "text": SMOL_PROMPT}]
         prompt = self.processor.apply_chat_template([{"role": "user", "content": content}], add_generation_prompt=True)
-        inputs = self.processor(text=prompt, images=imgs, return_tensors="pt").to(self.device)
+        inputs = self.processor(text=prompt, images=[img], return_tensors="pt").to(self.device)
         with self.torch.no_grad():
-            out = self.model.generate(**inputs, max_new_tokens=90, do_sample=False)
-        text = self.processor.batch_decode(out[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)[0]
-        return _split_two(text)
+            out = self.model.generate(**inputs, max_new_tokens=60, do_sample=False, repetition_penalty=1.1)
+        text = self.processor.batch_decode(out[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)[0].strip()
+        text = text.split("\n")[0].strip()
+        if not text or _ECHO.search(text):
+            return None, None
+        if text[-1] not in ".!?":
+            text += "."
+        return text[0].upper() + text[1:], None
 
 
 class ClaudeDescriber:
@@ -309,4 +320,7 @@ class VisionPass:
         if self.describer:
             d, e = self.describer.describe(frames)
             out["description"], out["editorial"] = d, e
+        if not out.get("editorial"):
+            from .derive import editorial_reading
+            out["editorial"] = editorial_reading({**shot, **out})
         return out, emb

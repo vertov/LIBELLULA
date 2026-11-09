@@ -57,25 +57,44 @@ _TRANS_NAME = {"C": "cut", "D": "dissolve", "W": "wipe", "K": "key"}
 
 
 def edl_to_boundaries(path: Path, fps: float, file_start_tc: str | None, nb_frames: int | None,
-                      use_record: bool = False) -> list[tuple[int, int, str]]:
+                      use_record: bool | None = None) -> list[tuple[int, int, str]]:
     """Return [(start_frame, end_frame_exclusive, in_type), ...] relative to the file start.
 
-    Source TCs are interpreted relative to the file's own start timecode (or 00:00:00:00
-    when the file has none).  With ``use_record`` the record TCs are used, relative to
-    the first event's record-in (Resolve timelines usually start at 01:00:00:00).
+    DaVinci Resolve exports (Scene Cut Detection, or a timeline holding one clip) carry the
+    clip's own timecode in the source columns and the timeline position (usually from
+    01:00:00:00) in the record columns.  By default the source TCs are used, relative to the
+    file's start timecode (00:00:00:00 when the file has none, which is what Resolve assigns
+    to such files).  If the source TCs do not fit inside the file, the record TCs relative to
+    the first event's record-in are used instead.  ``use_record`` forces either choice.
     """
     events, _ = parse_edl(path)
     events = [e for e in events if e.track.upper().startswith("V") or e.track.upper() in ("B", "AA/V", "A/V")]
     if not events:
         raise ValueError(f"no video events in EDL {path}")
-    base = 0
-    if use_record:
-        base = tc_to_frames(events[0].rec_in, fps)
-        spans = [(tc_to_frames(e.rec_in, fps) - base, tc_to_frames(e.rec_out, fps) - base, e) for e in events]
-    else:
+
+    def spans_from(record: bool) -> list[tuple[int, int, EdlEvent]]:
+        if record:
+            base = tc_to_frames(events[0].rec_in, fps)
+            return sorted(((tc_to_frames(e.rec_in, fps) - base, tc_to_frames(e.rec_out, fps) - base, e) for e in events),
+                          key=lambda t: t[0])
         base = tc_to_frames(file_start_tc, fps) if file_start_tc else 0
-        spans = [(tc_to_frames(e.src_in, fps) - base, tc_to_frames(e.src_out, fps) - base, e) for e in events]
-    spans.sort(key=lambda t: t[0])
+        return sorted(((tc_to_frames(e.src_in, fps) - base, tc_to_frames(e.src_out, fps) - base, e) for e in events),
+                      key=lambda t: t[0])
+
+    def fits(spans) -> bool:
+        if not spans:
+            return False
+        lo, hi = spans[0][0], max(e for _, e, _ in spans)
+        if lo < -2 or hi <= 0:
+            return False
+        return nb_frames is None or hi <= nb_frames + max(2, int(fps))
+
+    if use_record is None:
+        spans = spans_from(False)
+        if not fits(spans):
+            spans = spans_from(True)
+    else:
+        spans = spans_from(use_record)
     out: list[tuple[int, int, str]] = []
     for s, e, ev in spans:
         s = max(0, s)

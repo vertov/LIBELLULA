@@ -26,8 +26,9 @@ models = [
   "open_clip_torch",
   "panns-inference",
   "faster-whisper",
+  "transformers>=4.46",
 ]
-# Local vision-language model for per-shot descriptions (SmolVLM via transformers).
+# (kept for compatibility; SmolVLM's transformers dependency is now part of `models`)
 vlm = ["transformers>=4.46", "torch"]
 # Person counting with YOLOv8n.
 people = ["ultralytics"]

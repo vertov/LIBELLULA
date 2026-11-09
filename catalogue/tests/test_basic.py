@@ -92,3 +92,32 @@ def test_dominant_colors():
     pix = np.array([[255, 0, 0]] * 70 + [[0, 0, 255]] * 30, dtype=np.uint8)
     cols = visual.dominant_colors(pix, 5)
     assert cols[0]["hex"] == "#0000ff" and abs(cols[0]["frac"] - 0.7) < 0.01   # BGR in -> hex RGB out
+
+
+def test_edl_auto_falls_back_to_record_tcs(tmp_path: Path):
+    # Source TCs far outside a 10-second file (camera TC) while the file itself carries no TC:
+    # the reader must switch to record TCs relative to the first event.
+    text = """TITLE: x
+001  AX       V     C        14:22:10:00 14:22:14:00 01:00:00:00 01:00:04:00
+002  AX       V     C        14:22:14:00 14:22:20:00 01:00:04:00 01:00:10:00
+"""
+    p = tmp_path / "x.edl"
+    p.write_text(text)
+    spans = edl.edl_to_boundaries(p, 25.0, None, 250)
+    assert spans[0][:2] == (0, 100) and spans[1][:2] == (100, 250)
+    # With the file's own start TC the source columns fit and are used.
+    spans = edl.edl_to_boundaries(p, 25.0, "14:22:10:00", 250)
+    assert spans[0][:2] == (0, 100)
+
+
+def test_editorial_reading_is_deterministic():
+    from footage_catalogue import derive
+    s = {"duration_sec": 9.0, "shot_scale": "wide", "camera_motion": "static", "face_count": 0,
+         "interior_exterior": "exterior", "day_night": "day", "audio_class": "ambience", "speech_frac": 0.0,
+         "motion_total": 0.001, "brightness": 0.5, "saturation": 0.3}
+    e = derive.editorial_reading(s)
+    assert e.startswith("Wide static shot of 9.0 s (exterior, day):")
+    assert "establishing" in e and "sustained bed" in e
+    assert derive.editorial_reading(s) == e
+    short = derive.editorial_reading({"duration_sec": 0.3})
+    assert "flash frame" in short

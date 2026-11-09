@@ -25,9 +25,8 @@ Requires Python 3.10+ and ffmpeg on PATH (`brew install ffmpeg`).
 ```bash
 cd catalogue
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[models]"          # core + TransNetV2 + CLIP + PANNs + faster-whisper
+pip install -e ".[models]"          # core + TransNetV2 + CLIP + PANNs + faster-whisper + SmolVLM
 # optional extras
-pip install -e ".[vlm]"             # SmolVLM local descriptions (transformers)
 pip install -e ".[people]"          # YOLOv8n person counting (ultralytics)
 pip install -e ".[claude]"          # descriptions via the Claude API (needs ANTHROPIC_API_KEY)
 ```
@@ -38,7 +37,7 @@ pass is skipped.  Everything in Layer 1 and Layer 4 is plain OpenCV/numpy.
 
 Model weights download on first use into `models/` (PANNs CNN14 ~330 MB from Zenodo,
 YuNet ~230 KB from GitHub) or the Hugging Face cache (CLIP ViT-B/32 ~600 MB, Whisper
-`small` ~480 MB).  TransNetV2 weights ship inside its wheel.
+`small` ~480 MB, SmolVLM-500M ~1 GB).  TransNetV2 weights ship inside its wheel.
 
 ## Run
 
@@ -52,10 +51,12 @@ fcat run "/Volumes/Super/CollectedFootage/some/clip.mov"
 # the whole archive (resumable: kill it and run the same command again)
 fcat run
 
-# Layer 3 model pass over everything already analysed (resumable, separately runnable)
+# Layer 3 model pass over everything already analysed (resumable, separately runnable).
+# Default: CLIP + faces + SmolVLM one-line descriptions (local, free, slow: several seconds per shot on CPU)
 fcat vision
-fcat vision --describe smolvlm        # add one-line description + editorial reading (local VLM)
-fcat vision --describe claude         # same via the Claude API (ANTHROPIC_API_KEY)
+fcat vision --describe off            # CLIP + faces only (fast)
+fcat vision --describe claude         # descriptions + editorial lines via the Claude API (ANTHROPIC_API_KEY)
+fcat similar 3:12                     # nearest shots to file 3, shot 13, by CLIP embedding
 
 fcat status                           # progress per file
 fcat html                             # regenerate the HTML index
@@ -82,16 +83,21 @@ fcat export                           # rewrite JSON/Markdown/contact sheets fro
   (`l1_done … l4_done`); the model pass commits every 8 shots with per-shot
   `vision_done`.  A killed run restarts at the first unfinished layer of the file.
 * Model pass: 1–2 sampled frames per shot (`--vision-frames`), shots under 0.5 s skipped
-  (`--vision-min-sec`).
+  (`--vision-min-sec`).  SmolVLM is the slow part: ~13 s per shot on a 4-core x86 CPU
+  here, expected a few seconds per shot on Apple Silicon (MPS).  Budget accordingly or run
+  `fcat vision --describe off` first and add descriptions in a later pass.
 * Per-file runtimes go to the log and `logs/timings.csv`; after three files the log prints
   the realtime factor and the estimated remaining time for the rest of the archive.
 
 ## Layers
 
 **Layer 1 (per shot, computed).**  Boundaries from TransNetV2 (streamed, windowed as in
-the reference implementation), PySceneDetect fallback, or a Resolve CMX3600 EDL next to
-the file or in `--edl-dir` (overrides detection; source TCs relative to the file's start
-TC, or `--edl-use-record`).  Hard cuts are snapped to the largest inter-frame difference
+the reference implementation), PySceneDetect fallback, or a DaVinci Resolve CMX3600 EDL
+(`<stem>.edl` next to the file or in `--edl-dir`) which overrides detection.  Resolve's
+Scene Cut Detection export is read directly: source-column TCs relative to the file's own
+start timecode when they fit the file, otherwise record-column TCs relative to the first
+event (`--edl-tc source|record` forces one).  Event types C/D/W become `edl_cut`,
+`edl_dissolve`, `edl_wipe`; uncovered stretches become `edl_gap` shots.  Hard cuts are snapped to the largest inter-frame difference
 within ±3 frames of the network's prediction; boundaries are typed `cut | dissolve |
 fade` from the transition span length and luma.  Per shot: start/end frame (end
 exclusive), seconds, SMPTE TC offset by the file's start timecode, native fps as a
@@ -114,8 +120,12 @@ without an audio track are flagged `has_audio=0`, not errors.
 float32 blob in `embeddings`) and zero-shot shot scale (wide/medium/close-up, raw
 five-way scores kept), interior/exterior, day/night (blended with Layer 1 brightness).
 Face count and largest face size (YuNet; faces refine the scale).  People count (YOLOv8n
-if installed, else face count).  One-line description + one-line editorial reading via
-SmolVLM or Claude.  Camera-motion type comes from Layer 1 flow.
+if installed, else face count).  One-line description from SmolVLM-500M (one key frame, one
+plain question; the 500M model cannot follow a two-part instruction) or from Claude.  The
+one-sentence **editorial reading is rule-based**, composed from scale, camera motion,
+duration, faces, place, light, motion energy and the audio class, so every shot gets one
+even without a VLM; with `--describe claude` the model writes it instead.  Camera-motion
+type comes from Layer 1 flow.
 
 **Layer 4 (per file, derived).**  Shot count, mean/median/min/max shot length, cuts per
 minute, duration histogram, cut-rhythm timeline (cut times, cuts per 30 s window, shot
@@ -139,6 +149,15 @@ Every `shots` row is directly usable by the assembly tool: `start_frame`, `end_f
 plus the queryable fields (scale, camera_motion, audio_class, brightness, hue_name,
 motion_*, face_count, …).  Similarity search: read `embeddings.vector` as `<f4` and dot
 it against a query vector.
+
+## Running it
+
+The pipeline has to run on the machine that mounts the drives.  This code was written and
+tested in a Linux container on synthetic clips and one real clip; the first run on the
+archive itself is `fcat run --limit 1` on the Mac, then inspect `html/index.html`, the
+contact sheet and the JSON before `fcat run` on everything.  Untested so far: Apple
+Silicon (MPS) and VideoToolbox decode, 4K decode speed, variable-frame-rate phone footage,
+real Resolve EDL exports, the Claude description backend, YOLO people counting.
 
 ## Design notes
 

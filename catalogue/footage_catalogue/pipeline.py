@@ -230,6 +230,12 @@ def _commit_vision(con, cfg: Config, pending, vp) -> None:
 def layer4(con, cfg: Config, file_id: int, tag: str) -> dict:
     rec = build_record(con, file_id)
     f = rec["file"]
+    missing = [s for s in rec["shots"] if not s.get("editorial")]
+    if missing:
+        with con:
+            for s in missing:
+                s["editorial"] = derive.editorial_reading(s)
+                db.update_shot(con, s["id"], editorial=s["editorial"])
     st = derive.summarise(f, rec["shots"], rec["audio_segments"], rec["transcript"])
     thumb_dir = cfg.thumbs_dir / tag
     sheet = thumb_dir / "contact_sheet.jpg"

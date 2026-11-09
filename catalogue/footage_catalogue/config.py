@@ -27,7 +27,7 @@ class Config:
     embed: bool = True            # CLIP embedding (part of Layer 3)
     faces: bool = True            # face detection (part of Layer 3)
     people: bool = False          # YOLO person count (optional extra, part of Layer 3)
-    describe: str = "off"         # off | smolvlm | claude  (part of Layer 3)
+    describe: str = "smolvlm"     # off | smolvlm | claude  (part of Layer 3)
     flow: bool = True             # optical flow in Layer 1 (the slowest Layer 1 item)
     html: bool = True             # regenerate HTML after each file
 
@@ -37,7 +37,7 @@ class Config:
     psd_threshold: float = 27.0   # PySceneDetect ContentDetector threshold
     min_shot_frames: int = 2
     edl_dir: Path | None = None   # look for <stem>.edl here (and next to the source)
-    edl_use_record: bool = False  # use record TCs (relative to first event) instead of source TCs
+    edl_use_record: bool | None = None  # None = auto (source TCs if they fit the file, else record TCs)
 
     # --- resource caps -----------------------------------------------------
     proxy_height: int = 480

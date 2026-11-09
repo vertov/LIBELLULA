@@ -158,3 +158,81 @@ def paragraph(file: dict, shots: list[dict], segments: list[dict], transcript: l
     elif st["median_shot_sec"] > 8.0:
         parts.append("Long takes: good for sustained coverage, establishing and ambience.")
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Rule-based editorial reading of a single shot
+# ---------------------------------------------------------------------------
+
+def editorial_reading(s: dict) -> str:
+    """One sentence on what the shot is useful for, composed from measured fields.
+
+    Used for every shot that has no model-written editorial line (the local VLM only writes
+    the description).  Deterministic, so it is also a readable summary of the fields."""
+    dur = s.get("duration_sec") or 0.0
+    scale = s.get("shot_scale")
+    cam = s.get("camera_motion")
+    faces = s.get("face_count") or 0
+    people = s.get("people_count")
+    place = s.get("interior_exterior")
+    tod = s.get("day_night")
+    audio = s.get("audio_class")
+    speech = s.get("speech_frac") or 0.0
+    motion = s.get("motion_total") or 0.0
+    bright = s.get("brightness")
+    sat = s.get("saturation")
+
+    head = []
+    if scale:
+        head.append(scale)
+    if cam and cam != "static":
+        head.append(cam)
+    elif cam == "static":
+        head.append("static")
+    frame = " ".join(head) + " shot" if head else "Shot"
+    frame = frame[0].upper() + frame[1:]
+    where = ", ".join(x for x in (place, tod) if x)
+    lead = f"{frame} of {dur:.1f} s" + (f" ({where})" if where else "")
+
+    uses = []
+    if dur < 0.5:
+        uses.append("too short for anything but a flash frame or rhythmic accent")
+    elif dur < 1.5:
+        uses.append("accent or rhythm cut")
+    if faces and scale == "close-up":
+        uses.append("reaction / performance insert")
+    elif faces and scale == "medium":
+        uses.append("figure coverage, usable for sync or voice-over")
+    elif not faces and scale == "wide":
+        uses.append("establishing or location shot")
+    elif not faces and scale == "close-up":
+        uses.append("detail cutaway")
+    if cam in ("pan", "tilt", "tracking") and dur >= 2.0:
+        uses.append("reveal or transition move")
+    if cam == "handheld":
+        uses.append("vérité energy")
+    if cam == "zoom":
+        uses.append("push/pull emphasis")
+    if cam == "static" and dur >= 8.0:
+        uses.append("sustained bed for narration or ambience")
+    if motion > 0.012 and not faces:
+        uses.append("kinetic texture")
+    if bright is not None and bright < 0.15:
+        uses.append("dark, works for night or fade material")
+    if sat is not None and sat < 0.1:
+        uses.append("near-monochrome")
+    if speech >= 0.6:
+        uses.append("carries sync speech")
+    elif audio == "music":
+        uses.append("music under picture")
+    elif audio == "silence":
+        uses.append("silent, free for any sound design")
+    if s.get("audio_bridge_in") and s.get("audio_bridge_out"):
+        uses.append("audio continues across both cuts in the source")
+    if not uses:
+        uses.append("general coverage")
+    seen, uniq = set(), []
+    for u in uses:
+        if u not in seen:
+            uniq.append(u); seen.add(u)
+    return f"{lead}: " + "; ".join(uniq[:4]) + "."

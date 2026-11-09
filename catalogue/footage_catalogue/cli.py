@@ -31,15 +31,16 @@ def _layer_flags(p: argparse.ArgumentParser) -> None:
     g.add_argument("--no-embed", action="store_true", help="skip CLIP (embedding, scale, place, day/night)")
     g.add_argument("--no-faces", action="store_true")
     g.add_argument("--people", action="store_true", help="count people with YOLOv8n (pip install ultralytics)")
-    g.add_argument("--describe", choices=["off", "smolvlm", "claude"], default="off",
-                   help="per-shot description + editorial line: local SmolVLM or the Claude API")
+    g.add_argument("--describe", choices=["off", "smolvlm", "claude"], default="smolvlm",
+                   help="per-shot description + editorial line in the model pass: local SmolVLM (default), Claude API, or off")
     d = p.add_argument_group("detection")
     d.add_argument("--detector", choices=["auto", "transnetv2", "pyscenedetect"], default="auto")
     d.add_argument("--transnet-threshold", type=float, default=0.5)
     d.add_argument("--psd-threshold", type=float, default=27.0)
     d.add_argument("--min-shot-frames", type=int, default=2)
     d.add_argument("--edl-dir", help="directory holding <stem>.edl files that override detection")
-    d.add_argument("--edl-use-record", action="store_true", help="use EDL record TCs (relative to first event) instead of source TCs")
+    d.add_argument("--edl-tc", choices=["auto", "source", "record"], default="auto",
+                   help="which EDL timecodes locate the cuts: auto (source if they fit the file, else record), source, or record")
     r = p.add_argument_group("resources")
     r.add_argument("--proxy-height", type=int, default=480)
     r.add_argument("--stride", type=int, default=2, help="analyse every Nth proxy frame for colour/flow")
@@ -74,7 +75,7 @@ def make_config(a: argparse.Namespace) -> Config:
         cfg.psd_threshold = a.psd_threshold
         cfg.min_shot_frames = a.min_shot_frames
         cfg.edl_dir = Path(a.edl_dir).expanduser() if a.edl_dir else None
-        cfg.edl_use_record = a.edl_use_record
+        cfg.edl_use_record = {"auto": None, "source": False, "record": True}[a.edl_tc]
         cfg.proxy_height = a.proxy_height
         cfg.analysis_stride = a.stride
         cfg.hwaccel = a.hwaccel
@@ -113,6 +114,11 @@ def main(argv=None) -> int:
     p_scan = sub.add_parser("scan", help="list the video files that would be processed")
     _common(p_scan)
 
+    p_sim = sub.add_parser("similar", help="nearest shots by CLIP embedding (validates the embeddings table)")
+    p_sim.add_argument("shot", help="shot id, or <file_id>:<shot_idx> (e.g. 3:12)")
+    p_sim.add_argument("-k", type=int, default=10)
+    _common(p_sim)
+
     a = ap.parse_args(argv)
     cfg = make_config(a)
     if a.cmd == "scan":
@@ -148,6 +154,33 @@ def main(argv=None) -> int:
             log.info("exported %s", r["path"])
         from .html import build_site
         build_site(con, cfg)
+    elif a.cmd == "similar":
+        import numpy as np
+        con = db.connect(cfg.db_path)
+        if ":" in a.shot:
+            fid, idx = (int(x) for x in a.shot.split(":"))
+            row = con.execute("SELECT id FROM shots WHERE file_id=? AND idx=?", (fid, idx)).fetchone()
+            if row is None:
+                print("no such shot"); return 1
+            sid = row["id"]
+        else:
+            sid = int(a.shot)
+        q = con.execute("SELECT vector, model FROM embeddings WHERE shot_id=?", (sid,)).fetchone()
+        if q is None:
+            print("shot has no embedding (run `fcat vision`)"); return 1
+        qv = db.get_embedding(q)
+        rows = con.execute("SELECT e.shot_id, e.vector, s.idx, s.start_tc, s.duration_sec, s.shot_scale, s.camera_motion, f.filename "
+                           "FROM embeddings e JOIN shots s ON s.id=e.shot_id JOIN files f ON f.id=s.file_id WHERE e.model=?",
+                           (q["model"],)).fetchall()
+        mat = np.stack([db.get_embedding(r) for r in rows])
+        sims = mat @ qv
+        order = np.argsort(-sims)
+        print(f"query shot {sid}; {len(rows)} shots with embeddings ({q['model']})")
+        for i in order[: a.k + 1]:
+            r = rows[int(i)]
+            mark = "*" if r["shot_id"] == sid else " "
+            print(f"{mark} {sims[i]:.3f}  shot {r['shot_id']:6d}  {r['filename']} #{r['idx'] + 1}  {r['start_tc']}  {r['duration_sec']:.2f}s  "
+                  f"{r['shot_scale'] or ''} {r['camera_motion'] or ''}")
     elif a.cmd == "status":
         con = db.connect(cfg.db_path)
         rows = con.execute("SELECT * FROM files ORDER BY rel_path").fetchall()
