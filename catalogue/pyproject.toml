@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "footage-catalogue"
+version = "0.1.0"
+description = "Shot-by-shot structural catalogue of a footage archive: SQLite + JSON/Markdown + static HTML."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "scipy",
+  "opencv-python-headless",
+  "scenedetect>=0.6",
+  "imagehash",
+  "pillow>=10.1",
+  "soundfile",
+]
+
+[project.optional-dependencies]
+# Shot-boundary network (TransNetV2, weights bundled in the wheel) + CLIP + PANNs + Whisper.
+models = [
+  "torch",
+  "torchvision",
+  "transnetv2-pytorch",
+  "open_clip_torch",
+  "panns-inference",
+  "faster-whisper",
+]
+# Local vision-language model for per-shot descriptions (SmolVLM via transformers).
+vlm = ["transformers>=4.46", "torch"]
+# Person counting with YOLOv8n.
+people = ["ultralytics"]
+# Claude API for descriptions / editorial readings.
+claude = ["anthropic"]
+all = ["footage-catalogue[models,vlm,people,claude]"]
+
+[project.scripts]
+fcat = "footage_catalogue.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["footage_catalogue*"]

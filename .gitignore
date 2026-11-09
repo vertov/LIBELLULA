@@ -59,3 +59,8 @@ Desktop.ini
 
 # ---- stmd C reference binary ----
 stmd/cref/stmd_ref
+
+# ---- catalogue/ (footage pipeline): local env and model caches ----
+catalogue/.venv/
+catalogue/*.egg-info/
+catalogue/build/
